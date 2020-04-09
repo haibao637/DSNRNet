@@ -50,45 +50,47 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 import torch
 import torch.nn.functional as F
 import model
-loadckpt = "/Users/yanjianfeng/Downloads/snet_model_000199.ckpt"
-snet= model.SRNet(1)
+loadckpt = "/home/yanjianfeng/data/srnet_model_grad_Scharr_x_y_gen_1.5/snet_model_000010.ckpt"
+snet= model.SRNet(1).cuda()
 # snet = snet.cuda()
-state_dict = torch.load(loadckpt,map_location=torch.device('cpu'))
+state_dict = torch.load(loadckpt,map_location=torch.device('cuda'))
 # print(state_dict['model'])
 snet.load_state_dict(state_dict['model'], strict=False)
-snet = snet.cpu()
+# snet = snet.cpu()
 import matplotlib.pyplot as plt
 def sharpen1(y,max_scale=5):
     y = y.astype(np.float32)/255.0
 
     # cv2.waitKey()
-    y_tensor = torch.Tensor(y[np.newaxis,np.newaxis])
+    y_tensor = torch.Tensor(y[np.newaxis,np.newaxis]).cuda()
     #
-    b = snet(y_tensor)
+    b = snet(y_tensor).cuda()
     # b = cv2.ximgproc.guidedFilter(y,y,radius=1,eps=0.01)
 
     patch = torch.nn.functional.unfold(y_tensor, kernel_size=3, dilation=1, padding=1, stride=1)
     patch = patch.reshape([1,9,y_tensor.shape[2],y_tensor.shape[3]])
     mean_patch = patch.mean(dim=1,keepdim=True)
     vp = torch.mean((patch- mean_patch)**2,1,keepdim=True)
-    # mean = y_tensor.mean(dim=1,keepdim)
-    # patch = torch.nn.functional.unfold(y_tensor, kernel_size=3, dilation=1, padding=1, stride=1)
-    # patch = patch.reshape([1, 9, y_tensor.shape[2], y_tensor.shape[3]])
-    # mean_patch = patch.mean(dim=1, keepdim=True)
-    # vp = torch.mean((patch - mean_patch) ** 2, 1, keepdim=True)
+    # print("std:",vp[vp>0].mean())
+    vp = torch.clamp(vp*500,0,2.0)
+    # # mean = y_tensor.mean(dim=1,keepdim)
+    # # patch = torch.nn.functional.unfold(y_tensor, kernel_size=3, dilation=1, padding=1, stride=1)
+    # # patch = patch.reshape([1, 9, y_tensor.shape[2], y_tensor.shape[3]])
+    # # mean_patch = patch.mean(dim=1, keepdim=True)
+    # # vp = torch.mean((patch - mean_patch) ** 2, 1, keepdim=True)
 
-    detail =  y_tensor-b
-    mean_detail = detail.mean(dim=1,keepdim=True)
-    ve = torch.mean((detail- mean_detail)**2,1,keepdim=True)
+    # detail =  y_tensor-b
+    # mean_detail = detail.mean(dim=1,keepdim=True)
+    # ve = torch.mean((detail- mean_detail)**2,1,keepdim=True)
 
-    mask = ve<1e-4
-    ve[mask]=1e-4
-    k=1.03
-    scale1=torch.clamp(vp*100,0,5.0)
-    scale1 = scale1.squeeze().squeeze().detach().cpu().numpy()
+    # mask = ve<1e-4
+    # ve[mask]=1e-4
+    # k=1.03
+    # scale1=torch.clamp(vp*100,0,5.0)
+    # scale1 = scale1.squeeze().squeeze().detach().cpu().numpy()
 
-    e = (y_tensor-b).squeeze().squeeze().detach().cpu().numpy()
-    print(e.min(),e.max(),scale1.min(),scale1.max())
+    # e = (y_tensor-b).squeeze().squeeze().detach().cpu().numpy()
+    # print(e.min(),e.max(),scale1.min(),scale1.max())
     # cv2.imshow("scale", scale1)
     # cv2.waitKey()
     # plt.imshow(scale1,'rainbow'),plt.show()
@@ -110,16 +112,18 @@ def sharpen1(y,max_scale=5):
     #
     # scale = np.clip(scale,0,max_scale)
     # cv2.imshow("scale",scale/max_scale)
-    sharp = y+e*1
-    # maxs = F.max_pool2d(torch.Tensor(y[np.newaxis,np.newaxis]),3,1,1)
-    # mins = -F.max_pool2d(torch.Tensor(-y[np.newaxis,np.newaxis]),3,1,1)
-    # maxs = maxs.reshape(y.shape).numpy()
-    # mins = mins.reshape(y.shape).numpy()
-    # alpha=0.5/max_scale
+    # b = F.avg_pool2d(b,3,1,1)
+    sharp = (y_tensor*(1+b))
+    # maxs = F.max_pool2d(y_tensor,3,1,1)
+    # mins = -F.max_pool2d(-y_tensor,3,1,1)
+    # # maxs = maxs.reshape(y.shape).numpy()
+    # # mins = mins.reshape(y.shape).numpy()
+    # alpha=0.25
     # sharp[sharp<mins] = (mins+alpha*(sharp-mins))[sharp<mins]
     # sharp[sharp>maxs] = (maxs+alpha*(sharp-maxs))[sharp>maxs]
     # mask = (maxs-mins)<10.0/255
     # sharp[mask]=y[mask]
+    sharp = sharp.squeeze().squeeze().detach().cpu().numpy()
     sharp = np.clip(sharp*255.0,0,255.0).astype(np.uint8)
     return sharp
 import time
@@ -156,10 +160,10 @@ def enhance_video(instance,video_path,output_dir):
         idx+=1
         if idx==1:
                 print(img.shape)
-                if (img.shape[0]%4 !=0)|(img.shape[1]%4 !=0):
-                    break
+                # if (img.shape[0]%4 !=0)|(img.shape[1]%4 !=0):
+                #     break
                 # vls.vls_set_new_video_info(instance,img.shape[1],img.shape[0],0,255)
-        if  idx>50:
+        if  idx>200:
             break
         img=img.astype(np.uint8)
         yuv=cv2.cvtColor(img,cv2.COLOR_BGR2YUV)
@@ -189,7 +193,7 @@ def enhance_video(instance,video_path,output_dir):
         # output=rgb1
         if out is None:
             video_name=os.path.splitext(os.path.basename(video_path))[0]
-            out = cv2.VideoWriter(os.path.join(output_dir,video_name+'.avi'), cv2.VideoWriter_fourcc(*'I420'), 17, (output.shape[1],output.shape[0]))
+            out = cv2.VideoWriter(os.path.join(output_dir,video_name+'.mp4'), cv2.VideoWriter_fourcc(*'mp4v'), 17, (output.shape[1],output.shape[0]))
         out.write(output.astype(np.uint8))
         video_name=os.path.splitext(os.path.basename(video_path))[0]
         out_dir = os.path.join(output_dir,video_name)
@@ -214,26 +218,26 @@ def enhance_video(instance,video_path,output_dir):
     # print(output)
 
 
-# if __name__ == "__main__":
-#
-#
-#     output_dir="/home/haibao637/data/download_out_cnn/"
-#     input_dir="/home/haibao637/data/download"
-#     instance = c_uint64(0)
-#     # status=vls.vls_create_instance(byref(instance))
-#     #
-#     # status = vls.vls_init(instance,0)
-#     # vls.vls_set_enhance_scale(instance,10)
-#     # vls.vls_set_noise_scale(instance,3)
-#     # print(status)
-#     for video in sorted(os.listdir(input_dir))[10:20]:
-#         # if (video.find("clip15_")==-1 ) :
-#         #     continue
-#         # if os.path.exists(os.path.join(output_dir,video)):
-#         #     continue
-#         video_path=os.path.join(input_dir,video)
-#         print(video_path,'enhancing...')
-#         enhance_video(instance,video_path,output_dir)
+if __name__ == "__main__":
+
+
+    output_dir="/home/yanjianfeng/data/douyin_out_cnn_5_std_2/"
+    input_dir="/home/yanjianfeng/data/douyin/"
+    instance = c_uint64(0)
+    # status=vls.vls_create_instance(byref(instance))
+    #
+    # status = vls.vls_init(instance,0)
+    # vls.vls_set_enhance_scale(instance,10)
+    # vls.vls_set_noise_scale(instance,3)
+    # print(status)
+    for video in sorted(os.listdir(input_dir)):
+        # if (video.find("clip15_")==-1 ) :
+        #     continue
+        # if os.path.exists(os.path.join(output_dir,video)):
+        #     continue
+        video_path=os.path.join(input_dir,video)
+        print(video_path,'enhancing...')
+        enhance_video(instance,video_path,output_dir)
 #     # enhance_video(instance,"/home/haibao637/data/bigolive_dumping/uid_1537369101_date_1-29-21-5-7.264",output_dir)
 #     # img = cv2.imread("/home/haibao637/data/like_real_test_out_detail/256LNc/thumb_1.bmp")
 #     # yuv = cv2.cvtColor(img,cv2.COLOR_BGR2YUV)
@@ -244,7 +248,7 @@ def enhance_video(instance,video_path,output_dir):
 #     # vls.vls_release_resource(instance)
 #     # vls.vls_destroy_instance(byref(instance))
 
-enhance_video(0,"data/clip36_400x720_18_1667.mp4","output/")
+# enhance_video(0,"/home/haibao637/data/clip36_400x720_18_1667.mp4","output/")
 # img = cv2.imread("//home/haibao637/data/like_real_test_out_detail/256LNc/thumb_302.bmp")
 # img = img.astype(np.float32)/255.0
 # yuv = cv2.cvtColor(img,cv2.COLOR_BGR2YUV)
