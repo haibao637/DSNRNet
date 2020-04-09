@@ -9,7 +9,7 @@
 ### remove facial noise
 ![](./docs/enhance_1%20(4).jpg)
 ### the performance for video
-![](./docs/1586347400466825-converted.mp4)
-<!-- <video src="./docs/1586347400466825-converted.mp4"  controls preload></video> -->
+<!-- ![](./docs/1586347400466825-converted.mp4) -->
+<video src="./docs/1586347400466825-converted.mp4"  controls preload></video>
 
 
