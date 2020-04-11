@@ -16,7 +16,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 def train():
     dataset = SEDataSet("/home/yanjianfeng/data/hive_top/download/images/")
-    logdir= "/home/yanjianfeng/data/srnet_model_grad_Scharr_x_y_gen_1.5"
+    logdir= "/home/yanjianfeng/data/srnet_model_grad_Scharr_x_y_gen_1.5_noise_level_0.01_3_layer_16_upsample"
     if os.path.exists(logdir) == False:
         os.makedirs(logdir)
     print(len(dataset))
@@ -47,7 +47,7 @@ def train():
     scale=2.0
     output_pad = torch.nn.ReplicationPad2d(1)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.999))
-    loadckpt= "{}/snet_sample_model_{:0>6}.ckpt".format("/home/haibao637/data/", 4900)
+    loadckpt= "{}/srnet_sample_model_{:0>6}.ckpt".format("/home/haibao637/data/", 4900)
     # state_dict = torch.load(loadckpt)
     # model.load_state_dict(state_dict['model'], strict=False)
     # optimizer.load_state_dict(state_dict['optimizer'])
@@ -58,8 +58,11 @@ def train():
             img = img.cuda()
             # img_down = F.avg_pool2d(img,kernel_size=3,stride=2,padding=1)
             optimizer.zero_grad()
+            img_down = F.interpolate(img,scale_factor=0.5,mode="bilinear")
+            detail = model(img_down)
 
-            detail = model(img)
+            img_up = F.interpolate(img_down,scale_factor=2.0,mode="bilinear")
+            img_up = F.conv2d(output_pad(img_up),gaussian,stride=1,padding=0)
             # coarse = torch.clamp(coarse,-1.0,1.0)
             # img_up = F.interpolate(img,scale_factor=2.0,mode="bilinear")
 
@@ -75,7 +78,7 @@ def train():
             # gt_var = torch.clamp(gt_var*250,0.1,1.0)
             # gt_var = (gt_var - gt_var.min()) / (gt_var.max() - gt_var.min() + 1e-6)
             # detail = detail
-            output_down = img*(1+detail)
+            output_down = img_up*(1+detail)
             # output_down = img+detail
 
             output_down_blur = F.avg_pool2d(output_pad(output_down),kernel_size=3,padding=0,stride=1)
@@ -111,7 +114,7 @@ def train():
             # base_loss = loss0(base,base_gt)
             gen=1.0/1.5
             mask = gt_down_grad_x >0
-            th=0.05
+            th=0.01
 
 
             gt_down_grad_x[mask]-=th
@@ -212,7 +215,7 @@ def train():
             # img_global_var = torch.var(img,dim=[2,3],keepdim=True)
             # global_var_loss = scale*loss0(output_global_var,img_global_var)
 
-            loss = (grad_down_x_loss+grad_down_y_loss)+0.1* detail_loss#+0.01*var_loss#+0.25*global_var_loss
+            loss = (grad_down_x_loss+grad_down_y_loss)+0.05* detail_loss#+0.01*var_loss#+0.25*global_var_loss
 
             loss.backward()
             optimizer.step()
@@ -226,11 +229,11 @@ def train():
                 # vis.images(torch.cat([img_up[:8], torch.clamp(output[:8],0,1.0),detail[:8]], 0) * 255.0,win="super")
                 detail = torch.clamp(((output_down-img) + 1.0) / 2.0, 0, 1.0)
                 coarse = (img-detail+1.0)/1.8
-                vis.images(torch.cat([img[:8], torch.clamp(output_down[:8], 0, 1.0),coarse[:8], detail[:8]], 0) * 255.0, win="base_scharr_no_sup")
+                vis.images(torch.cat([img[:8], torch.clamp(output_down[:8], 0, 1.0),coarse[:8], detail[:8]], 0) * 255.0, win="sr_base_scharr_noise_0.01")
                 vis.line(X=np.column_stack([step+lens*epoch]),Y=np.column_stack([loss.item()]),
-                win="loss_base_scharr_no_sup",update='append',opts=dict(showlegend=True,legend=["loss_base_scharr_no_sup"]))
+                win="sr_loss_base_scharr_noise_0.01",update='append',opts=dict(showlegend=True,legend=["sr_loss_base_scharr_noise_0.01"]))
                 vis.line(X=np.column_stack([step+lens*epoch]),Y=np.column_stack([lr_scheduler.get_lr()]),
-                win="lr_base_scharr_no_sup",update='append',opts=dict(showlegend=True,legend=["lr_base_scharr_no_sup"]))
+                win="sr_lr_base_scharr_noise_0.01",update='append',opts=dict(showlegend=True,legend=["sr_lr_base_scharr_noise_0.01"]))
                 # vis.images(() * 255.0, win="detail")
         # logdir =
         lr_scheduler.step()
