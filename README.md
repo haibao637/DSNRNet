@@ -11,7 +11,7 @@
 ### the performance for video
 <!-- ![](./docs/1586347400466825-converted.mp4) -->
 <video src="./docs/1586347400466825-converted.mp4"  controls preload></video>
-### super resolution & detail enhancing & facial smoothing , all in one model
+### super resolution & detail enhancing & facial smoothing , all in one model ， video order [origianl,super+detail enhance + noise remove),bilinear downsample+upsample]
 <video src="./docs/720x1280.m4v"  controls preload></video>
 
 
