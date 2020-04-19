@@ -7,7 +7,7 @@
 ### preserve the high detail information
 ![](./docs/enhance_1%20(3).jpg)
 ### remove facial noise
-![](./docs/enhance_1%20(4).jpg)
+![](./docs/enhance_1%20(5).jpg)
 ### the performance for video
 <!-- ![](./docs/1586347400466825-converted.mp4) -->
 <video src="./docs/1586347400466825-converted.mp4"  controls preload></video>
