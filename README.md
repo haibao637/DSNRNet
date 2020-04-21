@@ -8,6 +8,8 @@
 ![](./docs/enhance_1%20(3).jpg)
 ### remove facial noise
 ![](./docs/enhance_1%20(5).jpg)
+### remove environmental noise and enhance detail
+![](./docs/enhance_1%20(6).jpg)
 ### the performance for video
 <!-- ![](./docs/1586347400466825-converted.mp4) -->
 <video src="./docs/1586347400466825-converted.mp4"  controls preload></video>
