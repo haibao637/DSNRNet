@@ -15,7 +15,7 @@
 <video src="./docs/1586347400466825-converted.mp4"  controls preload></video>
 ### super resolution & detail enhancing & facial smoothing , all in one model ， video order [origianl,super+detail enhance + noise remove),bilinear downsample+upsample]
 <video src="./docs/1586347390584509_convert.m4v" width="960" height="540" controls preload></video>
-
+### x2 super resolution (original x2 vs super resolution vs x2 cubic upsample )
 <video src="./docs/calendar.mp4" width="960" height="540" controls preload></video>
 
 
