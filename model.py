@@ -6,48 +6,69 @@ class SRNet(nn.Module):
     def __init__(self,in_channel):
         super(SRNet, self).__init__()
         ## encode
-        self.conv1s=nn.Sequential(
-            ConvGnReLU(in_channel,8,3,1,1),
-            ConvGnReLU(8,8,3,1,1), #224,224
-            # torch.nn.Conv2d(8,8,3,1,1)
+        self.feat_conv=nn.Sequential(
+            ConvGnReLU(in_channel,16,3,1,1),
+            ConvGnReLU(16,16,3,1,2,2), #224,224
+            ConvGnReLU(16, 16, 3, 1, 2, 2),  # 224,224
+            ConvGnReLU(16, 16, 3, 1, 2, 2),  # 224,224
+
             # torch.nn.Tanh()
         )
-        self.conv2s = nn.Sequential(
-            ConvGnReLU(8, 16, 3, 2, 1),#112,112
-            ConvGnReLU(16, 16, 3, 1, 1)
-        )
-        self.conv3s = nn.Sequential(
-            ConvGnReLU(16, 32, 3, 2, 1),  # 56,56
-            ConvGnReLU(32, 32, 3, 1, 1)
-        )
+        # self.rnn_conv0 = ConvLSTMCell(16,16)
+        # self.rnn_conv1 = ConvLSTMCell(16,16)
 
-        #decode
-        self.conv4s  = nn.Sequential(
-            DeConvGnReLU(32, 16, 3, 2, 1),  # 112,112
-            ConvGnReLU(16, 16, 3, 1, 1)
-        )
-        self.conv5s  = nn.Sequential(
-            DeConvGnReLU(32, 8, 3, 2, 1),  # 224,224
-            ConvGnReLU(8, 8, 3, 1, 1)
-        )
-        self.conv6s = nn.Sequential(
-            ConvGnReLU(16, 8, 3, 1, 1),
-            ConvGnReLU(8,in_channel*8,3,1,1),
-            # nn.Tanh()
-        )
-        self.final_conv = nn.Sequential(
-            nn.PixelShuffle(2),
-            nn.Conv2d(in_channel*2,in_channel,3,1,1)
-        )
+        self.up_conv1 = nn.Sequential(
+            ConvGnReLU(16+in_channel, 16, 3, 1, 2, 2),  # 224,224
+            nn.PixelShuffle(2), #b,8,h/2,w/2 -> b,2,h,w
+            nn.Conv2d(4,in_channel,3,1,1)
 
-    def forward(self, image) :
-        conv1s = self.conv1s(image)
-        conv2s = self.conv2s(conv1s)
-        conv3s = self.conv3s(conv2s)
-        conv4s = self.conv4s(conv3s)
-        conv5s = self.conv5s(torch.cat([conv4s,conv2s],1))
-        conv6s = self.conv6s(torch.cat([conv5s,conv1s],1))
-        return self.final_conv(conv6s)
+        )
+        # self.up_conv2  = nn.Sequential(
+        #     ConvGnReLU(16+in_channel*3,16,3,1,2,2), #224,224
+        #     ConvGnReLU(16, 16, 3, 1, 2, 2),  # 224,224
+        #     ConvGnReLU(16, 16, 3, 1, 2, 2),  # 224,224
+        #     ConvGnReLU(16, 16, 3, 1, 2, 2),  # 224,224
+        #     nn.PixelShuffle(2), #b,8,h/2,w/2 -> b,2,h,w
+        #     nn.Conv2d(4,in_channel,3,1,1)
+        # )
+        self.tripleFilter = TripleGuidedFiter([3,3,3],[0.1])
+
+    def forward(self, images) :
+        """
+        @param images: b,c,v,h,w
+        """
+        batch_size,channel,_,height,width = images.shape
+        #三维双边滤波
+
+        img = self.tripleFilter(images)
+        feat = self.feat_conv(img)
+        # print(feat.shape,img.shape)
+        up_conv1 = self.up_conv1(torch.cat([feat,img],1))
+        # img_up = F.interpolate(images.reshape([batch_size,-1,height,width]),scale_factor=2.0,align_corners=True,mode='bicubic').view(batch_size,channel,-1,height*2,width*2)
+        # img_up[:,:,1] = up_conv1
+
+
+        # up_conv2 = self.up_conv2(torch.cat([up_conv1,img_up],1))
+        img_up = F.interpolate(images[:,:,1],scale_factor=2.0,align_corners=True,mode='bicubic')
+        # img_up = self.tripleFilter(imgs_up)
+        enhanced =  img_up*(1+up_conv1)
+        return enhanced.clamp(0,1.0)
+
+    # def init(self,shape):
+    #     self.state0 = None
+    #     self.state1 = None
+    # def super(self,image):#b,1,h,w
+    #     batch_size,channel,height,width = image.shape
+    #     img_up = F.interpolate(image,scale_factor=2.0,mode='bicubic',align_corners=True)
+    #     img_up = img_up.reshape([batch_size,channel,height*2,width*2])
+    #     img_feat = self.feat_conv(img_up)
+    #     self.state0 = self.rnn_conv0(img_feat,self.state0)
+    #     self.state1 = self.rnn_conv1(self.state0[0],self.state1)
+    #     delta  = self.final_conv(self.state1[0])
+    #     print(torch.abs(delta).mean())
+    #     # img_up = F.avg_pool2d(img_up,3,1,1)
+    #     enhanced =  img_up*(1+delta)
+    #     return enhanced.clamp(0,1.0)
 
 
 
