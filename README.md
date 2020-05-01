@@ -21,7 +21,7 @@
 - fps : 340
 - gpu 2080Ti
 - model size: 125 KB
-- spnr : 22.02 (TecoGAN 21.83)
-<video src="./docs/calendar.mp4" width="960" height="540" controls preload></video>
+<video src="./docs/calendar.mp4" width="640" height="540" controls preload></video>
+<video src="./docs/city.mp4" width="640" height="540" controls preload></video>
 
 
