@@ -13,20 +13,20 @@ from utils import *
 import visdom
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
-vis = visdom.Visdom(env="senet_8.0")
+#vis = visdom.Visdom(env="senet_8.0")
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 writer = SummaryWriter("SRNet/10/2")
 def train():
-    dataset = SRDataSet("/home/yanjianfeng/data/teco_data/lr/HR/")
-    val_dataset = SRDataSet("/home/yanjianfeng/data/Vid4/GT/")
-    logdir= "/home/yanjianfeng/data/srnet_10.0"
+    dataset = SRDataSet("/home/haibao637/data/test_video/")
+    val_dataset = SRDataSet("/home/haibao637/data/Vid4/GT/")
+    logdir= "/home/haibao637/data/srnet_10.0"
     if os.path.exists(logdir) == False:
         os.makedirs(logdir)
     print(len(dataset))
     dataloader = DataLoader(dataset,batch_size=24,shuffle=True,drop_last=False,num_workers=4)
-    val_dataloader = DataLoader(val_dataset,batch_size=4,shuffle=True,drop_last=False,num_workers=1)
+    val_dataloader = DataLoader(val_dataset,batch_size=4,shuffle=True,drop_last=True,num_workers=1)
     device=torch.device("cuda")
     model = SRNet().cuda()
 
@@ -47,6 +47,7 @@ def train():
         lens = len(dataloader)
         model.train()
         for step,[lr,hr] in enumerate(dataloader):
+#             print(hr.shape,lr.shape)
             hr= hr.cuda()#b,v,c,h,w
             lr = lr.cuda()
             batch_size,channel,_,height,width = lr.shape
@@ -54,7 +55,7 @@ def train():
             # print(imgs.shape)
             # img_down = F.avg_pool2d(img,kernel_size=3,stride=2,padding=1)
             optimizer.zero_grad()
-
+            #base,sup = hr[:,0],hr[:,0]
             base,sup = model(lr)#b,1,h,w
             # print(sup.shape,imgs[:,:1].shape)
             # print(imgs.shape)
@@ -64,15 +65,17 @@ def train():
             # print(sup.shape,img.shape)
             sups = hr+0.0 # b, c,v,h,w
             sups[:,:,hr.shape[2]//2] = sup
-            loss_1 = loss_sr(sups,hr)
-            loss_2 = loss_se(sup,img)
+#             loss_1 = loss_r(sups,hr)
+
+            loss_2 = grid_loss(sups,hr)
             loss_3 = CharbonnierLoss(sup,img)
-            loss =     loss_3
+            loss =     loss_2 + loss_3
+#             loss_1 =     loss_3
             # loss = CharbonnierLoss(sup,img)
             loss.backward()
 
             optimizer.step()
-            print("epoch ",epoch,"step %d/%d(%02f) : loss_sr %02f,loss_se %02f,loss_base %02f"%(step,lens,step/lens,loss_1.item(),loss_2.item(),loss.item()))
+            print("epoch ",epoch,"step %d/%d(%02f) : loss_grid %02f,loss_base %02f"%(step,lens,step/lens,loss_2.item(),loss.item()))
             if (step)%20 == 0:
                 psnr_out = psnr(sup,img)
                 # imgs_up   = F.interpolate(imgs_down,scale_factor=2.0,mode='bicubic',align_corners=True)#b,c,h/2,w/2
@@ -87,7 +90,7 @@ def train():
                 # win="sd_rnn_psnr",update='append',opts=dict(showlegend=True,legend=["sd_rnn_psnr"]))
                 total_step = step+lens*epoch
                 save_images(writer, 'train', {"hr":img,"sr":sup,"base":base,"detail":sup-base}, total_step)
-                writer.add_scalar("train/loss_se",loss_1,total_step)
+#                 writer.add_scalar("train/loss_se",loss_1,total_step)
                 writer.add_scalar("train/loss_sr",loss_2,total_step)
                 writer.add_scalar("train/loss_ct",loss_3,total_step)
                 writer.add_scalar("train/psnr",psnr_out,total_step)

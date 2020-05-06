@@ -83,7 +83,6 @@ class SRDataSet(Dataset):
             trans.ToTensor()
 
         ])
-        self.resize =
     def __len__(self):
         return len(self.hr_seqs)
     def __getitem__(self, item):

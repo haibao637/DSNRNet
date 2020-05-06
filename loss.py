@@ -41,7 +41,7 @@ def loss_nr(target_image,gt_image):
     sad_gt[mask]= (((sad_gt[mask]-alpha)/(1-alpha))**(1.0/scale))*(1-alpha)
     sad_gt[inv_mask]=-sad_gt[inv_mask]
 
-    return F.l1_loss(sad_target,sad_gt)+F.mse_loss(target_image,gt_image)
+    return F.l1_loss(sad_target,sad_gt)+F.l1_loss(target_image,gt_image)
 
 
 def loss_se(output,target):
@@ -67,12 +67,12 @@ def loss_se(output,target):
 
     # mask = dx_gt < 0
     # dx_gt[mask]= -dx_gt[mask]
-    # dx_gt = dx_gt**(1/1.5)
+    # dx_gt = dx_gt**(1/1.2)
     # dx_gt[mask] = -dx_gt[mask]
 
     # mask = dy_gt < 0
     # dy_gt[mask]= -dy_gt[mask]
-    # dy_gt = dy_gt**(1/1.5)
+    # dy_gt = dy_gt**(1/1.2)
     # dy_gt[mask] = -dy_gt[mask]
 
     # gen=1.0/1.5
@@ -108,89 +108,121 @@ def loss_sr(output,target):
     """
     @param output shape [batch_size,channel,3,height,width
     """
-
+    batch_size ,channel,view,height,width = target.shape
 
     # var
-    o_mean = F.avg_pool3d(output,3,stride=(1,1,1),padding=(0,1,1)) #b,c,1,h,w
+    o_mean = F.avg_pool3d(output,(3,5,5),stride=(1,1,1),padding=(0,2,2)) #b,c,1,h,w
     # o_var = F.avg_pool3d(output**2,3,stride=(1,1,1),padding=(0,1,1)) - o_mean**2 #b,c,1,h,w
 
-    g_mean = F.avg_pool3d(target,3,stride=(1,1,1),padding=(0,1,1)) #b,c,1,h,w
+    g_mean = F.avg_pool3d(target,(3,5,5),stride=(1,1,1),padding=(0,2,2)) #b,c,1,h,w
     # g_var = F.avg_pool3d(target**2,3,stride=(1,1,1),padding=(0,1,1)) - g_mean**2 #b,c,1,h,w
     # g_mean.squeeze_(2)
     # g_var.squeeze_(2)
     # o_mean.squeeze_(2)
     # o_var.squeeze_(2)
-    og_mean = F.avg_pool3d(output*target,3,stride=(1,1,1),padding=(0,1,1)) #b,c,1,h,w
+    og_mean = F.avg_pool3d(output*target,(3,5,5),stride=(1,1,1),padding=(0,2,2)) #b,c,1,h,w
     mv_loss =  F.l1_loss((o_mean*g_mean),og_mean)
     # mv_loss = F.l1_loss(o_var,g_var)
-    # return mv_loss
-    output.squeeze_(1)
-    target.squeeze_(1)
-    # output = output.clamp(0,1.0)
-    batch_size,channel,height,width = output.shape
-    scharrx=torch.Tensor([-3,0,3,-10,0,10,-3,0,3])/16.0
-    scharrx.requires_grad = False
-    scharry=torch.Tensor([-3,-10,-3,0,0,0,3,10,3])/16.0
-    scharry.requires_grad = False
-    scharrx  = scharrx.reshape([3,3]).cuda()
-    scharry  = scharry.reshape([3,3]).cuda()
+    return mv_loss
 
-    scharrxs = torch.zeros([max(output.shape[1:]),max(output.shape[1:]),3,3],dtype=torch.float32)
-    scharrys = torch.zeros([max(output.shape[1:]),max(output.shape[1:]),3,3],dtype=torch.float32)
-    for i in range(max(output.shape[1:])):
-        scharrxs[i,i,:,:] = scharrx
-        scharrys[i,i,:,:] = scharry
-    scharrxs = scharrxs.type(torch.float32).reshape(max(output.shape[1:]),max(output.shape[1:]),3,3).cuda()
-    scharrys = scharrys.type(torch.float32).reshape(max(output.shape[1:]),max(output.shape[1:]),3,3).cuda()
+    # output = output.reshape(-1,view,height,width)
+    # target = target.reshape(-1,view,height,width)
+    # # output = output.clamp(0,1.0)
+    # # batch_size,channel,height,width = output.shape
+    # scharrx=torch.Tensor([-3,0,3,-10,0,10,-3,0,3])/16.0
+    # scharrx.requires_grad = False
+    # scharry=torch.Tensor([-3,-10,-3,0,0,0,3,10,3])/16.0
+    # scharry.requires_grad = False
+    # scharrx  = scharrx.reshape([3,3]).cuda()
+    # scharry  = scharry.reshape([3,3]).cuda()
 
-    # xy
-    # output_xy = output.reshape([-1,1,height,width])
-    # dx = F.conv2d(output_xy,scharrx,stride = 1, padding =1)
-    # dy = F.conv2d(output_xy,scharry,stride = 1, padding =1)
+    # scharrxs = torch.zeros([max(output.shape[1:]),max(output.shape[1:]),3,3],dtype=torch.float32)
+    # scharrys = torch.zeros([max(output.shape[1:]),max(output.shape[1:]),3,3],dtype=torch.float32)
+    # for i in range(max(output.shape[1:])):
+    #     scharrxs[i,i,:,:] = scharrx
+    #     scharrys[i,i,:,:] = scharry
+    # scharrxs = scharrxs.type(torch.float32).reshape(max(output.shape[1:]),max(output.shape[1:]),3,3).cuda()
+    # scharrys = scharrys.type(torch.float32).reshape(max(output.shape[1:]),max(output.shape[1:]),3,3).cuda()
 
-    # target_xy = target.reshape([-1,1,height,width])
-    # dx_gt = F.conv2d(target_xy,scharrx,stride = 1, padding =1)
-    # dy_gt = F.conv2d(target_xy,scharry,stride = 1, padding =1)
+    # # xy
+    # # output_xy = output.reshape([-1,1,height,width])
+    # # dx = F.conv2d(output_xy,scharrx,stride = 1, padding =1)
+    # # dy = F.conv2d(output_xy,scharry,stride = 1, padding =1)
 
-    # dx_gt = torch.sin(dx_gt)
-    # dy_gt = torch.sin(dy_gt)
-    # mask = torch.abs(dx_gt)>0.05
-    # masky = torch.abs(dy_gt)>0.05
-    # loss_xy = torch.sum(torch.abs(dx[mask]-dx_gt[mask]))/(1+torch.sum(mask.type(torch.float32))) +\
-    #     torch.sum(torch.abs(dy[masky]-dy_gt[masky]))/(1+torch.sum(masky.type(torch.float32)))
-    # loss_xy = F.mse_loss(dx,dx_gt)+F.mse_loss(dy,dy_gt)
-    #yz
-    output_xy = output.permute([0,2,1,3])
-    dx = F.conv2d(output_xy,scharrxs[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
-    dy = F.conv2d(output_xy,scharrys[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
+    # # target_xy = target.reshape([-1,1,height,width])
+    # # dx_gt = F.conv2d(target_xy,scharrx,stride = 1, padding =1)
+    # # dy_gt = F.conv2d(target_xy,scharry,stride = 1, padding =1)
 
-    target_xy = target.permute([0,2,1,3])
-    dx_gt = F.conv2d(target_xy,scharrxs[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
-    dy_gt = F.conv2d(target_xy,scharrys[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
-    # mask = torch.abs(dx_gt)>0.05
-    # masky = torch.abs(dy_gt)>0.05
-    # loss_yz = torch.sum(torch.abs(dx[mask]-dx_gt[mask]))/(1+torch.sum(mask.type(torch.float32))) +\
-    #     torch.sum(torch.abs(dy[masky]-dy_gt[masky]))/(1+torch.sum(masky.type(torch.float32)))
-    loss_yz = F.l1_loss(dx[:,:,1],dx_gt[:,:,1])+F.l1_loss(dy[:,:,1],dy_gt[:,:,1])
+    # # dx_gt = torch.sin(dx_gt)
+    # # dy_gt = torch.sin(dy_gt)
+    # # mask = torch.abs(dx_gt)>0.05
+    # # masky = torch.abs(dy_gt)>0.05
+    # # loss_xy = torch.sum(torch.abs(dx[mask]-dx_gt[mask]))/(1+torch.sum(mask.type(torch.float32))) +\
+    # #     torch.sum(torch.abs(dy[masky]-dy_gt[masky]))/(1+torch.sum(masky.type(torch.float32)))
+    # # loss_xy = F.l1_loss(dx,dx_gt)+F.l1_loss(dy,dy_gt)
+    # #yz
+    # output_xy = output.permute([0,2,1,3])
+    # dx = F.conv2d(output_xy,scharrxs[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
+    # dy = F.conv2d(output_xy,scharrys[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
 
-    # zx
-    output_xy = output.permute([0,3,1,2])
-    dx = F.conv2d(output_xy,scharrxs[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
-    dy = F.conv2d(output_xy,scharrys[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
+    # target_xy = target.permute([0,2,1,3])
+    # dx_gt = F.conv2d(target_xy,scharrxs[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
+    # dy_gt = F.conv2d(target_xy,scharrys[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
+    # # mask = torch.abs(dx_gt)>0.05
+    # # masky = torch.abs(dy_gt)>0.05
+    # # loss_yz = torch.sum(torch.abs(dx[mask]-dx_gt[mask]))/(1+torch.sum(mask.type(torch.float32))) +\
+    # #     torch.sum(torch.abs(dy[masky]-dy_gt[masky]))/(1+torch.sum(masky.type(torch.float32)))
+    # loss_yz = F.l1_loss(dx[:,:,view//2],dx_gt[:,:,view//2])+F.l1_loss(dy[:,:,view//2],dy_gt[:,:,view//2])
 
-    target_xy = target.permute([0,3,1,2])
-    dx_gt = F.conv2d(target_xy,scharrxs[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
-    dy_gt = F.conv2d(target_xy,scharrys[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
-    # mask = torch.abs(dx_gt)>0.05
-    # masky = torch.abs(dy_gt)>0.05
-    # loss_zx = torch.sum(torch.abs(dx[mask]-dx_gt[mask]))/(1+torch.sum(mask.type(torch.float32))) +\
-    #     torch.sum(torch.abs(dy[masky]-dy_gt[masky]))/(1+torch.sum(masky.type(torch.float32)))
-    loss_zx = F.l1_loss(dx[:,:,1],dx_gt[:,:,1])+F.l1_loss(dy[:,:,1],dy_gt[:,:,1])
+    # # zx
+    # output_xy = output.permute([0,3,1,2])
+    # dx = F.conv2d(output_xy,scharrxs[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
+    # dy = F.conv2d(output_xy,scharrys[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
+
+    # target_xy = target.permute([0,3,1,2])
+    # dx_gt = F.conv2d(target_xy,scharrxs[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
+    # dy_gt = F.conv2d(target_xy,scharrys[:output_xy.shape[1],:output_xy.shape[1]],stride = 1, padding =1)
+    # # mask = torch.abs(dx_gt)>0.05
+    # # masky = torch.abs(dy_gt)>0.05
+    # # loss_zx = torch.sum(torch.abs(dx[mask]-dx_gt[mask]))/(1+torch.sum(mask.type(torch.float32))) +\
+    # #     torch.sum(torch.abs(dy[masky]-dy_gt[masky]))/(1+torch.sum(masky.type(torch.float32)))
+    # loss_zx = F.l1_loss(dx[:,:,view//2],dx_gt[:,:,view//2])+F.l1_loss(dy[:,:,view//2],dy_gt[:,:,view//2])
 
 
-    # loss_content = F.mse_loss(output,target)
-    return loss_yz + loss_zx + mv_loss.item()
+    # # loss_content = F.l1_loss(output,target)
+    # return loss_yz + loss_zx + mv_loss.item()
 
 
 def psnr(output,target):
-    return 10*torch.log10(1/(1e-6+F.mse_loss(output,target)))
+    """
+    @param output shape b,c,h,w
+    """
+    # return 10*torch.log10(1/(1e-6+F.l1_loss(output,target)))
+
+    return torch.mean(10*torch.log10(1/(1e-6 + torch.mean((output-target)**2,dim=[-2,-1]))))
+
+def CharbonnierLoss(a,b):
+    return torch.mean(torch.sqrt((a-b)**2 + 1e-6))
+
+def grid_loss(output,target):
+    b,c,v,h,w  = target.shape
+    output = output.reshape(-1,1,v,h,w)
+    target = target.reshape(-1,1,v,h,w)
+    target_patchs = []
+    output_patchs = []
+
+    for v_id in range(v):
+        target_patchs.append(torch.nn.functional.unfold(target[:,:,v_id],kernel_size=(3,3),padding=1).reshape([-1,9,h,w])) #b,9,h,w
+        output_patchs.append(torch.nn.functional.unfold(output[:,:,v_id],kernel_size=(3,3),padding=1).reshape([-1,9,h,w])) #b,9,h,w
+
+    target_patch = torch.cat(target_patchs,1) # b,27,h,w
+    output_patch = torch.cat(output_patchs,1) # b,27,h,w
+
+    cent_output = output[:,:,v//2]# bc,1,h,w
+    cent_target = target[:,:,v//2]# bc,1,h,w
+    output_patch[:,output_patch.shape[1]//2] = cent_target.squeeze(1)
+
+    output_grad = (output_patch-cent_output)
+    target_grad = (target_patch - cent_target)
+
+    return CharbonnierLoss(output_grad,target_grad)
