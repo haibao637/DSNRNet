@@ -13,8 +13,8 @@
 ### the performance for video
 <!-- ![](./docs/1586347400466825-converted.mp4) -->
 <video src="./docs/1586347400466825-converted.mp4"  controls preload></video>
-### x4 super resolution
-|-|-|
+### x4 video super resolution
+|说明|图片|
 |--|--|
 |1/4 bicubic下采样|![](./docs/lr.png)
 |x4 bicubic 上采样|![](./docs/bicubic.png)
