@@ -319,7 +319,6 @@ class LapPyrNet(nn.Module):
         pyrs[0] = feat
 
         for level in range(1,self.nLevel):
-
             pyrs[level] = self.downs[level](pyrs[level-1])
 
         lap_pyrs = [[] for _ in range(self.nLevel)]
@@ -328,12 +327,7 @@ class LapPyrNet(nn.Module):
         for level in range(self.nLevel-2,-1,-1):
             lap_pyrs[level] = pyrs[level] -  F.interpolate(pyrs[level+1],scale_factor = 2.0,align_corners=False,mode='bilinear')
 
-
         # ref_pyrs = [lap[:,n//2] for lap in lap_pyrs]
-
-
-
-
 
         # lap unet up
         for up in range(self.nUp):
@@ -345,29 +339,23 @@ class LapPyrNet(nn.Module):
         lap_pyrs = [lap.view(b,n,-1,lap.shape[-2],lap.shape[-1])  for lap in lap_pyrs]
 
         for view in range(n):
-            if view == n//2:
-                continue
+            # if view == n//2:
+            #     continue
             prev_offset =self.offsets[-1](torch.cat([lap_pyrs[-1][:,n//2],lap_pyrs[-1][:,view]],1))
             lap_pyrs[-1][:,view] = self.dcns[-1]([lap_pyrs[-1][:,view].contiguous(),prev_offset])
 
             for level in range(self.nLevel-2,-1,-1):
-
                 cent_feat = lap_pyrs[level][:,n//2]
-
                 level_feat = lap_pyrs[level][:,view]
-
                 offset = self.offsets[level](torch.cat([cent_feat,level_feat],1))
-
-                prev_offset = F.interpolate(prev_offset,scale_factor = 2.0,align_corners=False,mode='bilinear')
-
+                prev_offset = F.interpolate(prev_offset*2.0,scale_factor = 2.0,align_corners=False,mode='bilinear')
+                # prev_offfset = prev_offset*2
                 offset = self.offsetmerge[level](torch.cat([offset,prev_offset],1))
-
                 lap_pyrs[level][:,view] = self.dcns[level]([lap_pyrs[level][:,view].contiguous(),prev_offset])
-
                 prev_offset = offset
-        lap_pyrs = [lap.view(b*n,-1,lap.shape[-2],lap.shape[-1])  for lap in lap_pyrs]
 
-        # print(len(lap_pyrs))
+        lap_pyrs = [lap.view(b,n,-1,lap.shape[-2],lap.shape[-1])  for lap in lap_pyrs]
+
         return lap_pyrs
 
 def GateNet():
@@ -387,32 +375,30 @@ def GateNet():
 def last_conv():
     return nn.Conv2d(128,1,3,1,1)
 class PyrFusionNet(nn.Module):
-    def __init__(self,view_num=3,nlevel=3):
+    def __init__(self,nlevel=3):
         super(PyrFusionNet,self).__init__()
         self.gateNet = GateNet()
-        self.view_num = view_num
-        self.nlevel = nlevel
         self.merge = nn.ModuleList([last_conv()] +([upSample(128)]*(nlevel-2)) + [upSample(64)])
     def forward(self,pyrFeat):
         """
-        pyrFeat nlevel feat
+        pyrFeat nlevel feat ,each feat view: b,v,-1,h,w
         """
         device = torch.cuda.current_device()
 
         feats = []
-        for level in range(self.nlevel):
-            b,c,h,w = pyrFeat[level].shape
-            pyrFeat[level] = pyrFeat[level].view(-1,self.view_num,c,h,w)
-            weights = torch.zeros(b//self.view_num,c,h,w).to(device)
-            feat = torch.zeros(b//self.view_num,c,h,w).to(device)
-            for view in range(self.view_num):
-                weight =self.gateNet(torch.cat([pyrFeat[level][:,view],pyrFeat[level][:,self.view_num//2]],1))
-                feat += weight*pyrFeat[level][:,view]
+        for level in range(len(pyrFeat)):
+            b,v,c,h,w = pyrFeat[level].shape
+
+            weights = torch.zeros(b,c,h,w).to(device)
+            feat = torch.zeros(b,c,h,w).to(device)
+            for v_id in range(v):
+                weight =self.gateNet(torch.cat([pyrFeat[level][:,v_id],pyrFeat[level][:,v//2]],1))
+                feat += weight*pyrFeat[level][:,v_id]
                 # weights =weights + weight
             # feat /=weights
             feats.append(feat)
         prev = self.merge[-1](feats[-1])
-        for level in range(self.nlevel-2,-1,-1):
+        for level in range(len(pyrFeat)-2,-1,-1):
             prev = self.merge[level](torch.cat([feats[level],prev],1))
         return prev
 
@@ -433,3 +419,67 @@ class SRNet(nn.Module):
         detail = self.PyrFusionNet(pyrfeat)
         base = F.interpolate(image,scale_factor = 4.0,align_corners=False,mode='bilinear')
         return base + detail
+class SENet(nn.Module):
+    def __init__(self,in_channel):
+        super(SENet, self).__init__()
+        ## encode
+
+        self.conv1s=nn.Sequential(
+            ConvGnReLU(in_channel,16,3,1,1),
+            ConvGnReLU(16,16,3,1,2,2), #224,224
+            ConvGnReLU(16, 16, 3, 1, 2, 2),  # 224,224
+            ConvGnReLU(16, 16, 3, 1, 2, 2),  # 224,224
+
+            # torch.nn.Tanh()
+        )
+        self.final_conv = torch.nn.Conv2d(16+in_channel,1,3,1,1,bias=False)
+        # self.conv2s = nn.Sequential(
+        #     ConvGnReLU(8, 16, 3, 2, 1),#112,112
+        #     ConvGnReLU(16, 16, 3, 1, 1)
+        # )
+        # self.conv3s = nn.Sequential(
+        #     ConvGnReLU(16, 32, 3, 2, 1),  # 56,56
+        #     ConvGnReLU(32, 32, 3, 1, 1)
+        # )
+        #
+        # #decode
+        # self.conv4s  = nn.Sequential(
+        #     DeConvGnReLU(32, 16, 3, 2, 1),  # 112,112
+        #     ConvGnReLU(16, 16, 3, 1, 1)
+        # )
+        # self.conv5s  = nn.Sequential(
+        #     DeConvGnReLU(32, 8, 3, 2, 1),  # 224,224
+        #     ConvGnReLU(8, 8, 3, 1, 1)
+        # )
+        #
+        # self.coarse = nn.Sequential(
+        #     ConvGnReLU(16,8,3,1,1),
+        #     ConvGnReLU(8,4,3,1,1),
+        #     nn.Conv2d(4,in_channel,3,1,1)
+        # )
+        # self.super =nn.Sequential(
+        #     ConvGnReLU(in_channel*2,8,3,1,1),
+        #     DeConvGnReLU(8, 4, 3, 2, 1),
+        #     ConvGnReLU(4,4,3,1,1),
+        #     nn.Conv2d(4,in_channel,3,1,1)
+        # )
+        # self.conv6s = nn.Sequential(
+        #     # DeConvGnReLU(16, 8, 3, 2, 1),
+        #     ConvGnReLU(in_channel, 8, 3, 1, 1),
+        #     ConvGnReLU(8, 8, 3, 1, 1),
+        #     nn.PixelShuffle(2),
+        #     nn.Conv2d(2,1,3,1,1)
+        #     # nn.Tanh()
+        # )
+
+    def forward(self, image):
+
+        height,width = image.shape[2:4]
+        # print(height,width)
+        # image = F.interpolate(image,size=[224,224],mode='bilinear')
+        x= self.conv1s(image)
+        x=self.final_conv(torch.cat([x,image],1))#.clamp(0,1.0)
+        # return F.interpolate(x,size=(height,width),mode='bilinear')
+        return image*(1+x)
+
+

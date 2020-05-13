@@ -100,7 +100,8 @@ def loss_se(output,target):
     # dy_gt[mask]+=th
     # dy_gt[mask]= torch.where(dy_gt>0,torch.sin(dy_gt/th*math.pi/2.0)*th,-(((-dy_gt)/(1.0-th))**gen)*(1.0-th))[mask]
     # dy_gt[mask]-=th
-    return  F.l1_loss(dx,dx_gt)+F.l1_loss(dy,dy_gt)
+    return  CharbonnierLoss(dx,dx_gt)+\
+            CharbonnierLoss(dy,dy_gt)
 
 
 
@@ -220,7 +221,7 @@ def grid_loss(output,target):
 
     cent_output = output[:,:,v//2]# bc,1,h,w
     cent_target = target[:,:,v//2]# bc,1,h,w
-    output_patch[:,output_patch.shape[1]//2] = cent_target.squeeze(1)
+    # output_patch[:,output_patch.shape[1]//2] = cent_target.squeeze(1)
 
     output_grad = (output_patch-cent_output)
     target_grad = (target_patch - cent_target)
