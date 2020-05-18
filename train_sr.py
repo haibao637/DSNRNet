@@ -17,17 +17,17 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 
-writer = SummaryWriter("SRNet/18/2/")
+writer = SummaryWriter("SRNet/23/1/")
 def train():
     dataset = SRDataSet("//home/yanjianfeng/data/vimeo90K/vimeo_septuplet/lr/HR/","//home/yanjianfeng/data/vimeo90K/vimeo_septuplet/lr/mLRs4/")
     # val_dataset = SRDataSet("/home/yanjianfeng/data/teco_data/val/gt/","/home/yanjianfeng/data/teco_data/val/mLRs4/")
     val_dataset = SRDataSet("/home/yanjianfeng/data/Vid4/GT/","/home/yanjianfeng/data/Vid4/lr/LRs4/",'val')
     # dataset = SRDataSet("/home/yanjianfeng/data/Vid4/GT/","/home/yanjianfeng/data/Vid4/lr/LRs4/")
-    logdir= "/home/yanjianfeng/data/srnet_18.0"
+    logdir= "/home/yanjianfeng/data/srnet_23.0"
     if os.path.exists(logdir) == False:
         os.makedirs(logdir)
     print(len(dataset))
-    dataloader = DataLoader(dataset,batch_size=12,shuffle=True,drop_last=True,num_workers=4)
+    dataloader = DataLoader(dataset,batch_size=32,shuffle=True,drop_last=True,num_workers=2)
     val_dataloader = DataLoader(val_dataset,batch_size=1,shuffle=True,drop_last=True,num_workers=1)
     device=torch.device("cuda")
     model = SRNet().cuda()
@@ -36,19 +36,19 @@ def train():
     model = model.cuda()
 
     # output_pad = torch.nn.ReplicationPad2d(1)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.99))
-    loadckpt= "{}/snet_model_{:06d}_step.ckpt".format("/home/yanjianfeng/data/srnet_16.0/", 185000)
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-4, betas=(0.9, 0.99))
+    loadckpt= "{}/snet_model_{:06d}_step.ckpt".format("/home/yanjianfeng/data/srnet_21.0/", 95000)
     # loadckpt= "{}/snet_model_{:06d}_.ckpt".format("/home/yanjianfeng/data/srnet_15.0/", 9)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, 0.95)
     state_dict = torch.load(loadckpt)
     model.load_state_dict(state_dict['model'],False)
     optimizer.load_state_dict(state_dict['optimizer'])
-    # if state_dict['scheduler'] is not None:
-    # lr_scheduler.load_state_dict(state_dict['scheduler'])
+    lr_scheduler.load_state_dict(state_dict['scheduler'])
+
     model = nn.DataParallel(model)
     # for _  in range(20):
     #     lr_scheduler.step()
-    total_step = 185000
+    total_step = 95000
     for epoch in range(0,2000):
         lens = len(dataloader)
         model.train()
@@ -76,7 +76,7 @@ def train():
             loss_2 = loss_se(sup,gt)
             loss_3 = CharbonnierLoss(sup,gt)
 
-            loss =    loss_3 #+ 0.1*loss_2
+            loss =    loss_3 + loss_2
             # loss = CharbonnierLoss(sup,gt)
             loss.backward()
             optimizer.step()

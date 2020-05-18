@@ -278,10 +278,10 @@ def offset(in_channel=128):
 
     )
 class LapPyrNet(nn.Module):
-    def __init__(self,nLevel=3,nUp = 2):
+    def __init__(self,nLevel=3):
         super(LapPyrNet,self).__init__()
         self.nLevel = nLevel
-        self.nUp = nUp
+        # self.nUp = nUp
         self.conv_0 = nn.Sequential(
             nn.Conv2d(3,64,3,1,1),
             ResidualBlock(64),
@@ -289,8 +289,8 @@ class LapPyrNet(nn.Module):
             nn.LeakyReLU()
         )
         self.downs = nn.ModuleList([downSample()]*nLevel)
-        ups =  nn.ModuleList(([upSample()]*(nLevel-1) ) +[upSample(64)])
-        self.ups = nn.ModuleList( [ups]*nUp)
+        # ups =  nn.ModuleList(([upSample()]*(nLevel-1) ) +[upSample(64)])
+        # self.ups = nn.ModuleList( [ups]*nUp)
 
         self.offsets = nn.ModuleList([offset(128)]*(self.nLevel))
 
@@ -321,19 +321,25 @@ class LapPyrNet(nn.Module):
         for level in range(1,self.nLevel):
             pyrs[level] = self.downs[level](pyrs[level-1])
 
+
+
+         # lap unet up
+        # for up in range(self.nUp):
+        #     pyrs[- 1] = self.ups[up][-1](pyrs[-1])
+        #     for level in range(self.nLevel-2,-1,-1):
+        #         # print(pyrs[level].shape,lap_pyrs[level+1].shape)
+        #         pyrs[level] = self.ups[up][level](torch.cat([pyrs[level],pyrs[level+1]],1))
+
+
         lap_pyrs = [[] for _ in range(self.nLevel)]
         lap_pyrs[self.nLevel -1 ] = pyrs[-1]
-
         for level in range(self.nLevel-2,-1,-1):
             lap_pyrs[level] = pyrs[level] -  F.interpolate(pyrs[level+1],scale_factor = 2.0,align_corners=False,mode='bilinear')
 
+
         # ref_pyrs = [lap[:,n//2] for lap in lap_pyrs]
 
-        # lap unet up
-        for up in range(self.nUp):
-            lap_pyrs[- 1] = self.ups[up][-1](lap_pyrs[-1])
-            for level in range(self.nLevel-2,-1,-1):
-                lap_pyrs[level] = self.ups[up][level](torch.cat([lap_pyrs[level],lap_pyrs[level+1]],1))
+
 
         # pcd alignment
         lap_pyrs = [lap.view(b,n,-1,lap.shape[-2],lap.shape[-1])  for lap in lap_pyrs]
@@ -372,13 +378,24 @@ def GateNet():
 #         nn.Conv2d(64,64,3,1,1),
 #         nn.LeakyReLU()
 #     )
+def GateNet3D():
+    return nn.Sequential(
+        nn.Conv3d(64,64,3,1,1),
+        nn.LeakyReLU(),
+        nn.Conv3d(64,32,3,1,1),
+        nn.LeakyReLU(),
+        nn.Conv3d(32,1,3,1,1),
+        nn.Softmax(dim=2)
+    )
 def last_conv():
     return nn.Conv2d(128,1,3,1,1)
 class PyrFusionNet(nn.Module):
     def __init__(self,nlevel=3):
         super(PyrFusionNet,self).__init__()
         self.gateNet = GateNet()
-        self.merge = nn.ModuleList([last_conv()] +([upSample(128)]*(nlevel-2)) + [upSample(64)])
+        # self.merge = nn.ModuleList([last_conv()] +([upSample(128)]*(nlevel-2)) + [upSample(64)])
+        self.gateNets = nn.ModuleList(([GateNet3D()]*nlevel))
+
     def forward(self,pyrFeat):
         """
         pyrFeat nlevel feat ,each feat view: b,v,-1,h,w
@@ -386,22 +403,50 @@ class PyrFusionNet(nn.Module):
         device = torch.cuda.current_device()
 
         feats = []
+
         for level in range(len(pyrFeat)):
             b,v,c,h,w = pyrFeat[level].shape
 
-            weights = torch.zeros(b,c,h,w).to(device)
-            feat = torch.zeros(b,c,h,w).to(device)
-            for v_id in range(v):
-                weight =self.gateNet(torch.cat([pyrFeat[level][:,v_id],pyrFeat[level][:,v//2]],1))
-                feat += weight*pyrFeat[level][:,v_id]
-                # weights =weights + weight
+            # weights = torch.zeros(b,c,h,w).to(device)
+            # feat = torch.zeros(b,c,h,w).to(device)
+            # max_weight = torch.zeros(b,1,h,w).to(device)
+            # for v_id in range(v):
+            #     if v_id == v//2:
+            #         continue
+            #     weight =torch.exp(-self.gateNet(torch.cat([pyrFeat[level][:,v_id],pyrFeat[level][:,v//2]],1)))
+            #     feat += weight*pyrFeat[level][:,v_id]
+            #     max_weight = torch.max(max_weight,weight)
+            #     weights =weights + weight
+            # feat += max_weight*pyrFeat[level][:,v//2]
+            # weights += max_weight
             # feat /=weights
+            # feats.append(feat)
+            pyrFeat[level]  = pyrFeat[level].permute(0,2,1,3,4)
+            weight = self.gateNets[level](pyrFeat[level])
+            feat  = torch.sum(pyrFeat[level]*weight,2)
             feats.append(feat)
-        prev = self.merge[-1](feats[-1])
-        for level in range(len(pyrFeat)-2,-1,-1):
-            prev = self.merge[level](torch.cat([feats[level],prev],1))
-        return prev
-
+        return feats # [b,64,h,w]*level
+        # prev = self.merge[-1](feats[-1])
+        # for level in range(len(pyrFeat)-2,-1,-1):
+        #     prev = self.merge[level](torch.cat([feats[level],prev],1))
+        # return prev
+class ReconNet(nn.Module):
+    def __init__(self,nlevel=3,nUp=2):
+        super(ReconNet,self).__init__()
+        # self.merge = nn.ModuleList([last_conv()] +([upSample(128)]*(nlevel-2)) + [upSample(64)])
+        ups =  nn.ModuleList(([upSample()]*(nlevel-1) ) +[upSample(64)])
+        self.ups = nn.ModuleList( [ups]*nUp)
+        self.nUp = nUp
+        self.nLevel = nlevel
+        self.SRConv = nn.Conv2d(64,3,3,1,1)
+    def forward(self,feats):
+        # up
+        for up in range(self.nUp):
+            feats[- 1] = self.ups[up][-1](feats[-1])
+            for level in range(self.nLevel-2,-1,-1):
+                # print(pyrs[level].shape,lap_pyrs[level+1].shape)
+                feats[level] = self.ups[up][level](torch.cat([feats[level],feats[level+1]],1))
+        return self.SRConv(feats[0])
 class SRNet(nn.Module):
     def __init__(self):
         super(SRNet,self).__init__()

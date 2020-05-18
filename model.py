@@ -8,10 +8,11 @@ from convlstm import ConvLSTMCell
 class SRNet(nn.Module):
     def __init__(self):
         super(SRNet,self).__init__()
+
         self.LapPyrNet = LapPyrNet()
         self.PyrFusionNet = PyrFusionNet()
+        self.ReconNet = ReconNet()
 
-        # self.senet = SENet(3)
         # to enhance edge
         # self.EnhanceFusionNet = PyFusionNet()
     # def freezesr(self):
@@ -27,8 +28,10 @@ class SRNet(nn.Module):
         b,v,c,h,w = images.shape
         image = images[:,v//2]
         # images = images.view(-1,c,h,w)
+
         pyrfeat = self.LapPyrNet(images)
-        detail = self.PyrFusionNet(pyrfeat)
+        feats = self.PyrFusionNet(pyrfeat)
+        detail = self.ReconNet(feats)
         base = F.interpolate(image,scale_factor = 4.0,align_corners=False,mode='bicubic').clamp(0,1.0)
         enhanced = base+detail
         # enhanced_1 = self.senet(enhanced)
