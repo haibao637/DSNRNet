@@ -6,7 +6,7 @@ from convlstm import ConvLSTMCell
 
 
 class SRNet(nn.Module):
-    def __init__(self):
+    def __init__(self,level=3):
         super(SRNet,self).__init__()
 
         self.LapPyrNet = LapPyrNet()

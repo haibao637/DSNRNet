@@ -146,4 +146,32 @@ def train():
         #     'optimizer': optimizer.state_dict()},
         #     "{}/snet_model_{:0>6}_.ckpt".format(logdir, epoch+1))
     writer.close()
+
+def test(total_step=0):
+    psnrs = []
+    # psnrs_1 = []
+    model.eval()
+    with torch.no_grad():
+        val_lens = len(val_dataloader)
+        for val_step,[lr,gt] in enumerate(val_dataloader):
+            optimizer.zero_grad()
+            gt= gt.cuda()#b,v,c,h,w
+            lr = lr.cuda()
+            batch_size,channel,_,height,width = lr.shape
+            # lr = lr.permute(0,2,1,3,4) # b, c ,v,h,w
+            # print(gts.shape)
+            # gt_down = F.avg_pool2d(gt,kernel_size=3,stride=2,padding=1)
+            base,sup = model(lr)#b,1,h,w
+            psnrs.append(psnr(sup,gt).item())
+            # psnrs_1.append(psnr(sup,gt).item())
+            loss = CharbonnierLoss(sup,gt)
+            print("step %d/%d(%02f) : loss_base %02f"%(val_step,val_lens,val_step/val_lens,loss.item()))
+            #
+            if (val_step)%10 == 0:
+                writer.add_scalar("val/loss_ct",loss,int(val_step+val_lens*(total_step/5000)))
+                save_images(writer, 'val', {"gt":gt,"sr":sup,"cubic":base,"sr-cubic":sup-base,"sr-gt":sup-gt}, int(val_step+val_lens*(total_step/5000)))
+        writer.add_scalar("val/psnr",sum(psnrs)/len(psnrs),total_step)
+        writer.add_scalar("val/psnr",sum(psnrs)/len(psnrs),total_step)
+        # print(sum(psnrs)/len(psnrs))
+# test(150000)
 train()
