@@ -56,13 +56,16 @@ def random_crop(lr, hr, lr_size, scale):
 
     return crop_lr, crop_hr
 class SRDataSet(Dataset):
-    def __init__(self,hr_dir,lr_dir,mode='train'):
-        # hr_dir = os.path.join(video_dir,"lr","HR")
-        # lr2_dir = os.path.join(video_dir,"lr","LRs4")
+    def __init__(self,video_dir,mode='train',video_list_file=None):
+        hr_dir = os.path.join(video_dir,"lr","HR")
+        lr_dir = os.path.join(video_dir,"lr","mLRs4")
         # lr2_1_dir = os.path.join(video_dir,"lr","LRs2")
 
         self.mode = mode
-        videos = os.listdir(hr_dir)
+        if video_list_file is None:
+            videos = os.listdir(hr_dir)
+        else:
+            videos = [v.strip().replace('/','') for v in  open(os.path.join(video_dir,video_list_file)).readlines()]
         hr_videos = [os.path.join(hr_dir,video) for video in videos]
         lr_videos = [os.path.join(lr_dir,video) for video in videos]
         # videos = os.listdir(video_dir)
@@ -82,8 +85,8 @@ class SRDataSet(Dataset):
             # hr_seq.sort(key=lambda f: int(''.join(list(filter(str.isdigit, f))) or -1))
 
             # shape = cv2.imread(seq[0]).shape
-            lr_seqs =  [lr_seq[i:i+5] for i in range(len(lr_seq)-5)]
-            hr_seqs = [hr_seq[i:i+5] for i in range(len(hr_seq)-5)]
+            lr_seqs =  [lr_seq[i:i+7] for i in range(len(lr_seq)-7+1)]
+            hr_seqs = [hr_seq[i:i+7] for i in range(len(hr_seq)-7+1)]
             # if mode == 'train':
 
             #     lr_seqs = lr_seqs + [[lr_seq[i]]*5 for i in range(len(lr_seq))]
@@ -151,7 +154,7 @@ class SRDataSet(Dataset):
         hr = hr_trans(Image.open(self.hr_seqs[item][lr.shape[0]//2]))
 
         if self.mode == 'train':
-            lr,hr = random_crop(lr,hr,lr_size=64,scale = 4)
+            lr,hr = random_crop(lr,hr,lr_size=32,scale = 4)
         # print(hr.shape,lr.shape)
         # mean = torch.mean(tensor,dim=[1,2],keepdim=True)
         # var = torch.std(tensor,dim=[1,2],keepdim=True)
@@ -159,7 +162,8 @@ class SRDataSet(Dataset):
 
 
 if __name__=="__main__":
-    dataset = SEDataSet("/home/haibao637/Downloads/")
-    dataloader = DataLoader(dataset,batch_size=1)
-    for img in dataloader:
-        print(img.min(),img.max())
+    dataset = SRDataSet("//home/yanjianfeng/data/vimeo90K/vimeo_septuplet/lr/HR/","//home/yanjianfeng/data/vimeo90K/vimeo_septuplet/lr/mLRs4/")
+    print(dataset.lr_seqs[20],dataset.hr_seqs[20])
+    # dataloader = DataLoader(dataset,batch_size=1)
+    # for img in dataloader:
+    #     print(img.min(),img.max())
