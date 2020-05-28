@@ -9,9 +9,9 @@ class SRNet(nn.Module):
     def __init__(self,level=3):
         super(SRNet,self).__init__()
 
-        self.LapPyrNet = LapPyrNet()
-        self.PyrFusionNet = PyrFusionNet()
-        self.ReconNet = ReconNet()
+        self.LapPyrNet = LapPyrNet(level)
+        self.PyrFusionNet = PyrFusionNet(level)
+        self.ReconNet = ReconNet(level)
 
         # to enhance edge
         # self.EnhanceFusionNet = PyFusionNet()

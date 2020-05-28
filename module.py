@@ -130,11 +130,11 @@ def downSample(nf=64):
         nn.MaxPool2d(3,2,1),
         nn.LeakyReLU(inplace=False),
     )
-def upSample(in_channel = 128,nf=64,blk=2):
+def upSample(in_channel = 128,nf=64):
     return nn.Sequential(
         nn.Conv2d(in_channel,nf,3,1,1),
         nn.LeakyReLU(),
-        *([ResidualBlock(nf)]*blk),
+        *([ResidualBlock(nf)]*2),
         nn.Conv2d(nf,nf*4,3,1,1),
         nn.PixelShuffle(2),
         nn.LeakyReLU(),
@@ -151,7 +151,7 @@ def offset(in_channel=128,nf=64):
 
     )
 class LapPyrNet(nn.Module):
-    def __init__(self,nLevel=3):
+    def __init__(self,nLevel=3,nf=64):
         super(LapPyrNet,self).__init__()
         self.nLevel = nLevel
         # self.nUp = nUp
@@ -161,7 +161,7 @@ class LapPyrNet(nn.Module):
             nn.Conv2d(nf,nf,3,1,1),
             nn.LeakyReLU()
         )
-        self.downs = nn.ModuleList([downSample()]*nLevel)
+        self.downs = nn.ModuleList([downSample()]*(nLevel))
         # ups =  nn.ModuleList(([upSample()]*(nLevel-1) ) +[upSample(64)])
         # self.ups = nn.ModuleList( [ups]*nUp)
 
@@ -204,23 +204,14 @@ class LapPyrNet(nn.Module):
         #         pyrs[level] = self.ups[up][level](torch.cat([pyrs[level],pyrs[level+1]],1))
 
 
-        lap_pyrs = [[] for _ in range(self.nLevel)]
-        lap_pyrs[self.nLevel -1 ] = pyrs[-1]
-        for level in range(self.nLevel-2,-1,-1):
-            lap_pyrs[level] = pyrs[level] -  F.interpolate(pyrs[level+1],scale_factor = 2.0,align_corners=False,mode='bilinear')
-
-         # lap unet up
-        # for up in range(self.nUp):
-        #     pyrs[- 1] = self.ups[up][-1](pyrs[-1])
-        #     for level in range(self.nLevel-2,-1,-1):
-        #         # print(pyrs[level].shape,lap_pyrs[level+1].shape)
-        #         pyrs[level] = self.ups[up][level](torch.cat([pyrs[level],pyrs[level+1]],1))
-
-
         # lap_pyrs = [[] for _ in range(self.nLevel)]
         # lap_pyrs[self.nLevel -1 ] = pyrs[-1]
         # for level in range(self.nLevel-2,-1,-1):
         #     lap_pyrs[level] = pyrs[level] -  F.interpolate(pyrs[level+1],scale_factor = 2.0,align_corners=False,mode='bilinear')
+
+
+        # ref_pyrs = [lap[:,n//2] for lap in lap_pyrs]
+
 
 
         # pcd alignment
@@ -236,10 +227,10 @@ class LapPyrNet(nn.Module):
                 cent_feat = lap_pyrs[level][:,n//2]
                 level_feat = lap_pyrs[level][:,view]
                 offset = self.offsets[level](torch.cat([cent_feat,level_feat],1))
-                prev_offset = F.interpolate(prev_offset*2.0,scale_factor = 2.0,align_corners=False,mode='bilinear')
+                prev_offset = F.interpolate(prev_offset,scale_factor = 2.0,align_corners=False,mode='bilinear')
                 # prev_offfset = prev_offset*2
-                offset = self.offsetmerge[level](torch.cat([offset,prev_offset],1))
-                lap_pyrs[level][:,view] = self.dcns[level]([lap_pyrs[level][:,view].contiguous(),prev_offset])
+                offset = self.offsetmerge[level](torch.cat([offset,prev_offset*2.0],1))
+                lap_pyrs[level][:,view] = self.dcns[level]([lap_pyrs[level][:,view].contiguous(),offset])
                 prev_offset = offset
 
         lap_pyrs = [lap.view(b,n,-1,lap.shape[-2],lap.shape[-1])  for lap in lap_pyrs]
@@ -261,21 +252,72 @@ def CentNet(channel=128,nf=64):
 #         nn.Conv2d(64,64,3,1,1),
 #         nn.LeakyReLU()
 #     )
-def GateNet3D():
+# def GateNet3D(nf=64):
+#     return nn.Sequential(
+#         nn.Conv3d(nf,nf,3,1,1),
+#         nn.LeakyReLU(),
+#          *([ResidualBlock3D(nf)]*2),
+#         nn.Conv3d(nf,32,3,1,1),
+#         nn.LeakyReLU(),
+#         nn.Conv3d(32,1,3,1,1),
+#         nn.Softmax(dim=2)
+#     )
+
+
+
+class SpatialAttention3d(nn.Module):
+    def __init__(self, kernel_size=7):
+        super(SpatialAttention3d, self).__init__()
+        assert kernel_size in (3,7), "kernel size must be 3 or 7"
+        padding = 3 if kernel_size == 7 else 1
+
+        self.conv = nn.Conv3d(2,1,kernel_size, padding=padding, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        avgout = torch.mean(x, dim=1, keepdim=True)
+        maxout, _ = torch.max(x, dim=1, keepdim=True)
+        x = torch.cat([avgout, maxout], dim=1)
+        x = self.conv(x)
+        return self.sigmoid(x)
+
+class ChannelAttention3d(nn.Module):
+    def __init__(self, in_planes, rotio=16):
+        super(ChannelAttention3d, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool3d(1)
+        self.max_pool = nn.AdaptiveMaxPool3d(1)
+        self.sharedMLP = nn.Sequential(
+            nn.Conv3d(in_planes, in_planes // rotio, 1, bias=False), nn.ReLU(),
+            nn.Conv3d(in_planes // rotio, in_planes, 1, bias=False))
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        avgout = self.sharedMLP(self.avg_pool(x))
+        maxout = self.sharedMLP(self.max_pool(x))
+        return self.sigmoid(avgout + maxout)
+
+class CBAM3D(nn.Module):
+    def __init__(self, planes):
+        super(CBAM3D,self).__init__()
+        self.ca = ChannelAttention3d(planes)
+        self.sa = SpatialAttention3d()
+    def forward(self, x):
+        x = self.ca(x) * x
+        x = self.sa(x) * x
+        return x
+
+def GateNet3D(in_channel = 64,nf=64):
     return nn.Sequential(
-        nn.Conv3d(64,64,3,1,1),
+        nn.Conv3d(in_channel,nf,3,1,1),
+        CBAM3D(nf),
         nn.LeakyReLU(),
-        nn.Conv3d(64,32,3,1,1),
-        nn.LeakyReLU(),
-        nn.Conv3d(32,1,3,1,1),
-        nn.Softmax(dim=2)
+        nn.Conv3d(nf,nf,3,1,1)
     )
-def last_conv():
-    return nn.Conv2d(128,1,3,1,1)
+
 class PyrFusionNet(nn.Module):
     def __init__(self,nlevel=3):
         super(PyrFusionNet,self).__init__()
-        self.gateNet = GateNet()
+        self.centNets =nn.ModuleList(([CentNet()]*nlevel))
         # self.merge = nn.ModuleList([last_conv()] +([upSample(128)]*(nlevel-2)) + [upSample(64)])
         self.gateNets = nn.ModuleList(([GateNet3D()]*nlevel))
 
@@ -307,6 +349,9 @@ class PyrFusionNet(nn.Module):
             pyrFeat[level]  = pyrFeat[level].permute(0,2,1,3,4)
             weight = self.gateNets[level](pyrFeat[level])
             feat  = torch.sum(pyrFeat[level]*weight,2)
+            cent = pyrFeat[level][:,:,v//2]
+            cent_weight = self.centNets[level](torch.cat([cent,feat],1))
+            feat = cent_weight*cent + (1-cent_weight)*feat
             feats.append(feat)
         return feats # [b,64,h,w]*level
         # prev = self.merge[-1](feats[-1])
@@ -314,22 +359,27 @@ class PyrFusionNet(nn.Module):
         #     prev = self.merge[level](torch.cat([feats[level],prev],1))
         # return prev
 class ReconNet(nn.Module):
-    def __init__(self,nlevel=3,nUp=2):
+    def __init__(self,nlevel=3,nUp=2,nf=64):
         super(ReconNet,self).__init__()
         # self.merge = nn.ModuleList([last_conv()] +([upSample(128)]*(nlevel-2)) + [upSample(64)])
-        ups =  nn.ModuleList(([upSample()]*(nlevel-1) ) +[upSample(64)])
-        self.ups = nn.ModuleList( [ups]*nUp)
+        self.ups =  nn.ModuleList(([upSample()]*(nlevel-1) ) +[upSample(64)])
+        # self.ups = nn.ModuleList( [ups]*nUp)
         self.nUp = nUp
         self.nLevel = nlevel
-        self.SRConv = nn.Conv2d(64,3,3,1,1)
+        self.HRCon = nn.Sequential(
+            upSample(64),
+            nn.Conv2d(nf,3,3,1,1)
+        )
     def forward(self,feats):
         # up
-        for up in range(self.nUp):
-            feats[- 1] = self.ups[up][-1](feats[-1])
-            for level in range(self.nLevel-2,-1,-1):
-                # print(pyrs[level].shape,lap_pyrs[level+1].shape)
-                feats[level] = self.ups[up][level](torch.cat([feats[level],feats[level+1]],1))
-        return self.SRConv(feats[0])
+        # for up in range(self.nUp):
+        feats[- 1] = self.ups[-1](feats[-1])
+        for level in range(self.nLevel-2,-1,-1):
+            # print(pyrs[level].shape,lap_pyrs[level+1].shape)
+            feats[level] = self.ups[level](torch.cat([feats[level],feats[level+1]],1))
+        return self.HRCon(feats[0])
+
+
 class SRNet(nn.Module):
     def __init__(self):
         super(SRNet,self).__init__()

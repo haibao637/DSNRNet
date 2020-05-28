@@ -43,12 +43,17 @@ def loss_nr(target_image,gt_image):
 
     return F.l1_loss(sad_target,sad_gt)+F.l1_loss(target_image,gt_image)
 
-
+def rgb2y(img):
+    img=img.permute(0,2,3,1).unsqueeze(-2)#b,h,w,1,3
+    yv=torch.Tensor([0.299,0.587,0.114]).reshape([1,1,1,3,1]).cuda()#b,h,w,1,1
+    return torch.matmul(img,yv).squeeze(-1).permute(0,3,1,2).clamp(0,1.0) # b,1,h,w
 def loss_se(output,target):
     """
     @param output shape [batch_size,channel,height,width
     """
     # output = output.clamp(0,1.0)
+    output = rgb2y(output)
+    target = rgb2y(target)
     batch_size,channel,height,width = output.shape
     scharrx=torch.Tensor([-3,0,3,-10,0,10,-3,0,3])/16.0
     scharrx.requires_grad = False
