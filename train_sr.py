@@ -15,16 +15,16 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 # vis = visdom.Visdom(env="senet_8.0")
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
-writer = SummaryWriter("SRNet/28/3/")
+writer = SummaryWriter("SRNet/24/6/")
 dataset = SRDataSet("/home/haibao637/xdata/vimeo90k/vimeo_septuplet/",'train','sep_trainlist.txt')
 val_dataset = SRDataSet("/home/haibao637/xdata/Vid4//",'val')
-logdir= "/home/haibao637/xdata/srnet_28.3"
+logdir= "/home/haibao637/xdata/srnet_24.6"
 if os.path.exists(logdir) == False:
     os.makedirs(logdir)
 print(len(dataset))
-dataloader = DataLoader(dataset,batch_size=32,shuffle=True,drop_last=True)
+dataloader = DataLoader(dataset,batch_size=48,shuffle=True,drop_last=True)
 val_dataloader = DataLoader(val_dataset,batch_size=1,shuffle=True,drop_last=True)
 device=torch.device("cuda")
 model = SRNet(3).cuda()
@@ -163,4 +163,4 @@ def test(total_step=0):
         writer.add_scalar("val/psnr",sum(psnrs)/len(psnrs),total_step)
         print(sum(psnrs)/len(psnrs))
 # test(150000)
-test()
+train()

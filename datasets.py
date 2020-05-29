@@ -98,7 +98,9 @@ class SRDataSet(Dataset):
             lr_seq = sorted([img_name for img_name in os.listdir(lr_video) if img_name.find(".png")])
             hr_seq = [os.path.join(hr_video,img_name) for img_name in  lr_seq]
             lr_seq = [os.path.join(lr_video,img_name) for img_name in lr_seq]
-
+            lr_seq = [lr for lr in lr_seq if os.path.exists(lr)]
+            hr_seq = [lr for lr in hr_seq if os.path.exists(lr)]
+            assert(len(lr_seq)==len(hr_seq))
             # lr_seq.sort(key=lambda f: int(''.join(list(filter(str.isdigit, f))) or -1))
             # hr_seq.sort(key=lambda f: int(''.join(list(filter(str.isdigit, f))) or -1))
 
