@@ -55,6 +55,24 @@ def random_crop(lr, hr, lr_size, scale):
     crop_hr = hr[..., hr_y:hr_y+hr_size, hr_x:hr_x+hr_size]
 
     return crop_lr, crop_hr
+def augment(lr,hr, hflip=True, rot=True):
+    """horizontal flip OR rotate (0, 90, 180, 270 degrees)"""
+    hflip = hflip and random.random() < 0.5
+    vflip = rot and random.random() < 0.5
+    rot90 = rot and random.random() < 0.5
+    if hflip:
+        hr = hr[:, ::-1, :]
+        lr = lr[:,:,::-1,:]
+    if vflip:
+        hr = hr[:, :,::-1]
+        lr = lr[:,:, :,::-1]
+    if rot90:
+        lr = lr.transpose(0,1,-1, -2)
+        hr = hr.transpose(0, -1, -2)
+    return lr,hr
+
+
+
 class SRDataSet(Dataset):
     def __init__(self,video_dir,mode='train',video_list_file=None):
         hr_dir = os.path.join(video_dir,"lr","HR")
@@ -149,12 +167,19 @@ class SRDataSet(Dataset):
         # mode = "bicubic"
         # lr = F.interpolate(hr,scale_factor=0.25,align_corners=False,mode="bicubic").clamp(0,1.0)
 
-        lr = [lr_trans(Image.open(img_path)) for img_path in self.lr_seqs[item]]
-        lr = torch.stack(lr,0)#v,c,h,w
-        hr = hr_trans(Image.open(self.hr_seqs[item][lr.shape[0]//2]))
-
+        lr = [cv2.cvtColor(cv2.imread(img_path),cv2.COLOR_BGR2RGB) for img_path in self.lr_seqs[item]]
+        lr = np.stack(lr,0)#v,h,w,c
+        lr = lr.astype(np.float32)/255.0
+        hr = (cv2.cvtColor(cv2.imread(self.hr_seqs[item][lr.shape[0]//2]),cv2.COLOR_BGR2RGB))
+        hr = hr.astype(np.float32)/255.0
+        hr = hr.transpose(2,0,1)
+        lr = lr.transpose(0,3,1,2)
         if self.mode == 'train':
-            lr,hr = random_crop(lr,hr,lr_size=32,scale = 4)
+            lr,hr = random_crop(lr,hr,lr_size=64,scale = 4)
+            lr,hr = augment(lr,hr)
+        lr = torch.Tensor(np.ascontiguousarray(lr))
+        hr = torch.Tensor(np.ascontiguousarray(hr))
+        # print(lr.shape,hr.shape)
         # print(hr.shape,lr.shape)
         # mean = torch.mean(tensor,dim=[1,2],keepdim=True)
         # var = torch.std(tensor,dim=[1,2],keepdim=True)
