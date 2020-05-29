@@ -10,7 +10,7 @@ from tensorboardX import SummaryWriter
 from utils import *
 # import cv2
 # import matplotlib.pyplot as plt
-import visdom
+#import visdom
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 # vis = visdom.Visdom(env="senet_8.0")
@@ -18,9 +18,9 @@ os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 
 writer = SummaryWriter("SRNet/28/3/")
-dataset = SRDataSet("//home/yanjianfeng/data/vimeo90K/vimeo_septuplet/",'train','sep_trainlist.txt')
-val_dataset = SRDataSet("/home/yanjianfeng/data/Vid4//",'val')
-logdir= "/home/yanjianfeng/data/srnet_28.3"
+dataset = SRDataSet("/home/haibao637/xdata/vimeo90k/vimeo_septuplet/",'train','sep_trainlist.txt')
+val_dataset = SRDataSet("/home/haibao637/xdata/Vid4//",'val')
+logdir= "/home/haibao637/xdata/srnet_28.3"
 if os.path.exists(logdir) == False:
     os.makedirs(logdir)
 print(len(dataset))
@@ -34,7 +34,7 @@ model = model.cuda()
 
 # output_pad = torch.nn.ReplicationPad2d(1)
 optimizer = torch.optim.Adam(model.parameters(), lr=4e-4, betas=(0.9, 0.99))
-loadckpt= "{}/snet_model_{:06d}_step.ckpt".format("/home/yanjianfeng/data/srnet_24.5/", 125000)
+loadckpt= "{}/snet_model_{:06d}_step.ckpt".format("/home/haibao637/xdata/srnet_24.5/", 125000)
 # loadckpt= "{}/snet_model_{:06d}_.ckpt".format("/home/yanjianfeng/data/srnet_15.0/", 9)
 # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 20000, 0.95)
 
@@ -43,7 +43,7 @@ lr_scheduler=CosineAnnealingLR_Restart(
                         restarts=[150000, 300000, 450000], weights=[1, 1, 1])
 
 state_dict = torch.load(loadckpt)
-model.load_state_dict(state_dict['model'],False)
+model.load_state_dict(state_dict['model'],True)
 # optimizer.load_state_dict(state_dict['optimizer'])
 # lr_scheduler.load_state_dict(state_dict['scheduler'])
 
@@ -156,11 +156,11 @@ def test(total_step=0):
             loss = CharbonnierLoss(sup,gt)
             print("step %d/%d(%02f) : loss_base %02f"%(val_step,val_lens,val_step/val_lens,loss.item()))
             #
-            # if (val_step)%10 == 0:
-                # writer.add_scalar("val/loss_ct",loss,int(val_step+val_lens*(total_step/5000)))
-                # save_images(writer, 'val', {"gt":gt,"sr":sup,"cubic":base,"sr-cubic":sup-base,"sr-gt":sup-gt}, int(val_step+val_lens*(total_step/5000)))
-        # writer.add_scalar("val/psnr",sum(psnrs)/len(psnrs),total_step)
-        # writer.add_scalar("val/psnr",sum(psnrs)/len(psnrs),total_step)
+            if (val_step)%10 == 0:
+                writer.add_scalar("val/loss_ct",loss,int(val_step+val_lens*(total_step/5000)))
+                save_images(writer, 'val', {"gt":gt,"sr":sup,"cubic":base,"sr-cubic":sup-base,"sr-gt":sup-gt}, int(val_step+val_lens*(total_step/5000)))
+        writer.add_scalar("val/psnr",sum(psnrs)/len(psnrs),total_step)
+        writer.add_scalar("val/psnr",sum(psnrs)/len(psnrs),total_step)
         print(sum(psnrs)/len(psnrs))
 # test(150000)
 test()

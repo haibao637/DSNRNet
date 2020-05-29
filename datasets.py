@@ -65,7 +65,7 @@ class SRDataSet(Dataset):
         if video_list_file is None:
             videos = os.listdir(hr_dir)
         else:
-            videos = [v.strip().replace('/','') for v in  open(os.path.join(video_dir,video_list_file)).readlines()]
+            videos = [v.strip() for v in  open(os.path.join(video_dir,video_list_file)).readlines()]
         hr_videos = [os.path.join(hr_dir,video) for video in videos]
         lr_videos = [os.path.join(lr_dir,video) for video in videos]
         # videos = os.listdir(video_dir)

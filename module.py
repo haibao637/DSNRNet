@@ -252,16 +252,16 @@ def CentNet(channel=128,nf=64):
 #         nn.Conv2d(64,64,3,1,1),
 #         nn.LeakyReLU()
 #     )
-# def GateNet3D(nf=64):
-#     return nn.Sequential(
-#         nn.Conv3d(nf,nf,3,1,1),
-#         nn.LeakyReLU(),
-#          *([ResidualBlock3D(nf)]*2),
-#         nn.Conv3d(nf,32,3,1,1),
-#         nn.LeakyReLU(),
-#         nn.Conv3d(32,1,3,1,1),
-#         nn.Softmax(dim=2)
-#     )
+def GateNet3D(nf=64):
+    return nn.Sequential(
+        nn.Conv3d(nf,nf,3,1,1),
+        nn.LeakyReLU(),
+         *([ResidualBlock3D(nf)]*2),
+        nn.Conv3d(nf,32,3,1,1),
+        nn.LeakyReLU(),
+        nn.Conv3d(32,1,3,1,1),
+        nn.Softmax(dim=2)
+    )
 
 
 
@@ -296,23 +296,23 @@ class ChannelAttention3d(nn.Module):
         maxout = self.sharedMLP(self.max_pool(x))
         return self.sigmoid(avgout + maxout)
 
-class CBAM3D(nn.Module):
-    def __init__(self, planes):
-        super(CBAM3D,self).__init__()
-        self.ca = ChannelAttention3d(planes)
-        self.sa = SpatialAttention3d()
-    def forward(self, x):
-        x = self.ca(x) * x
-        x = self.sa(x) * x
-        return x
+# class CBAM3D(nn.Module):
+#     def __init__(self, planes):
+#         super(CBAM3D,self).__init__()
+#         self.ca = ChannelAttention3d(planes)
+#         self.sa = SpatialAttention3d()
+#     def forward(self, x):
+#         x = self.ca(x) * x
+#         x = self.sa(x) * x
+#         return x
 
-def GateNet3D(in_channel = 64,nf=64):
-    return nn.Sequential(
-        nn.Conv3d(in_channel,nf,3,1,1),
-        CBAM3D(nf),
-        nn.LeakyReLU(),
-        nn.Conv3d(nf,nf,3,1,1)
-    )
+# def GateNet3D(in_channel = 64,nf=64):
+#     return nn.Sequential(
+#         nn.Conv3d(in_channel,nf,3,1,1),
+#         CBAM3D(nf),
+#         nn.LeakyReLU(),
+#         nn.Conv3d(nf,nf,3,1,1)
+#     )
 
 class PyrFusionNet(nn.Module):
     def __init__(self,nlevel=3):
