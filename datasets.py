@@ -59,16 +59,16 @@ def augment(lr,hr, hflip=True, rot=True):
     """horizontal flip OR rotate (0, 90, 180, 270 degrees)"""
     hflip = hflip and random.random() < 0.5
     vflip = rot and random.random() < 0.5
-    rot90 = rot and random.random() < 0.5
+    # rot90 = rot and random.random() < 0.5
     if hflip:
         hr = hr[:, ::-1, :]
         lr = lr[:,:,::-1,:]
     if vflip:
         hr = hr[:, :,::-1]
         lr = lr[:,:, :,::-1]
-    if rot90:
-        lr = lr.transpose(0,1,-1, -2)
-        hr = hr.transpose(0, -1, -2)
+    # if rot90:
+    #     lr = lr.transpose(0,1,-1, -2)
+    #     hr = hr.transpose(0, -1, -2)
     return lr,hr
 
 

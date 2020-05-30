@@ -1,4 +1,6 @@
 import torch
+
+from Vimeo90KDataSet import Vimeo90KDataset
 from datasets import SEDataSet,SRDataSet
 from torch.utils.data.dataloader import DataLoader
 from model import *
@@ -18,13 +20,14 @@ os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 writer = SummaryWriter("SRNet/24/6/")
-dataset = SRDataSet("/home/haibao637/xdata/vimeo90k/vimeo_septuplet/",'train','sep_trainlist.txt')
+# dataset = SRDataSet("/home/haibao637/xdata/vimeo90k/vimeo_septuplet/",'train','sep_trainlist.txt')
+dataset = Vimeo90KDataset("/home/haibao637/xdata/vimeo90k/vimeo90k_train_GT.lmdb","/home/haibao637/xdata/vimeo90k/vimeo90k_train_LR7frames.lmdb")
 val_dataset = SRDataSet("/home/haibao637/xdata/Vid4//",'val')
 logdir= "/home/haibao637/xdata/srnet_24.6"
 if os.path.exists(logdir) == False:
     os.makedirs(logdir)
 print(len(dataset))
-dataloader = DataLoader(dataset,batch_size=48,shuffle=True,drop_last=True)
+dataloader = DataLoader(dataset,batch_size=16,shuffle=True,drop_last=True)
 val_dataloader = DataLoader(val_dataset,batch_size=1,shuffle=True,drop_last=True)
 device=torch.device("cuda")
 model = SRNet(3).cuda()
@@ -34,6 +37,9 @@ model = model.cuda()
 
 # output_pad = torch.nn.ReplicationPad2d(1)
 optimizer = torch.optim.Adam(model.parameters(), lr=4e-4, betas=(0.9, 0.99))
+# optimizer = torch.optim.Adam([{"params":model.LapPyrNet.parameters(),"lr":1e-4},
+#                               {"params":model.PyrFusionNet.parameters(),"lr":1e-3},
+#                               {"params":model.ReconNet.parameters(),"lr":1e-3}], lr=1e-3, betas=(0.9, 0.99))
 loadckpt= "{}/snet_model_{:06d}_step.ckpt".format("/home/haibao637/xdata/srnet_24.5/", 125000)
 # loadckpt= "{}/snet_model_{:06d}_.ckpt".format("/home/yanjianfeng/data/srnet_15.0/", 9)
 # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 20000, 0.95)
@@ -42,8 +48,8 @@ lr_scheduler=CosineAnnealingLR_Restart(
                         optimizer, [150000, 150000, 150000, 150000], eta_min=1e-7,
                         restarts=[150000, 300000, 450000], weights=[1, 1, 1])
 
-state_dict = torch.load(loadckpt)
-model.load_state_dict(state_dict['model'],True)
+# state_dict = torch.load(loadckpt)
+# model.load_state_dict(state_dict['model'],True)
 # optimizer.load_state_dict(state_dict['optimizer'])
 # lr_scheduler.load_state_dict(state_dict['scheduler'])
 
@@ -64,8 +70,13 @@ def train():
         for step,[lr,gt] in enumerate(dataloader):
             gt= gt.cuda()#b,c,h,w
             lr = lr.cuda()
+
             total_step+=1
-            batch_size,channel,_,height,width = lr.shape
+            batch_size,_,view,channel,height,width = lr.shape
+            gt = gt.view(-1,channel,height,width)
+            lr = lr.view(-1,view,channel,height,width)
+            # batch_size = gt.shape[0]
+
             # lr = lr.permute(0,2,1,3,4) # b, c ,v,h,w
             # print(gts.shape)
             # gt_down = F.avg_pool2d(gt,kernel_size=3,stride=2,padding=1)
@@ -114,7 +125,7 @@ def train():
                 writer.add_scalar("train/loss_ct",loss_3,total_step)
                 writer.add_scalar("train/psnr",psnr_out,total_step)
                 writer.add_scalar("train/psnr_base",psnr(base,gt),total_step)
-                writer.add_scalar("train/lr",lr_scheduler.get_lr(),total_step)
+                # writer.add_scalar("train/lr",lr_scheduler.get_lr(),total_step)
             # if (step)%1000 == 0:
             #     torch.save({
             #     'model': model.state_dict(),
