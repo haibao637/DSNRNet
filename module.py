@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 from  dcn.deform_conv import ModulatedDeformConvPack as DCN
+from cbamGRU import CCBGRU
 def ConvGnReLU(in_channels,out_channels,kernel_size,stride,padding,dilation=1,bias=False):
     num_group = max(1,out_channels//8)
     return nn.Sequential(
@@ -150,6 +151,93 @@ def offset(in_channel=128,nf=64):
         nn.LeakyReLU()
 
     )
+# class LapPyrNet(nn.Module):
+#     def __init__(self,nLevel=3,nf=64):
+#         super(LapPyrNet,self).__init__()
+#         self.nLevel = nLevel
+#         # self.nUp = nUp
+#         self.conv_0 = nn.Sequential(
+#             nn.Conv2d(3,nf,3,1,1),
+#             ResidualBlock(nf),
+#             nn.Conv2d(nf,nf,3,1,1),
+#             nn.LeakyReLU()
+#         )
+#         self.downs = nn.ModuleList([downSample()]*(nLevel))
+#         # ups =  nn.ModuleList(([upSample()]*(nLevel-1) ) +[upSample(64)])
+#         # self.ups = nn.ModuleList( [ups]*nUp)
+
+#         self.offsets = nn.ModuleList([offset(nf*2)]*(self.nLevel))
+
+#         self.offsetmerge = nn.ModuleList([offset(nf*2)]*(self.nLevel-1))
+#         # self.L_feat = nn.ModuleList([nn.Sequential(
+#         #     nn.Conv2d(64,64,3,1,1),
+#         #     nn.LeakyReLU()
+#         # )]*self.nLevel)
+#         self.dcns = nn.ModuleList([DCN(nf, nf, 3, stride=1, padding=1, dilation=1, deformable_groups=8,
+#                               extra_offset_mask=True)]* nLevel)
+#     def forward(self,images):
+#         """
+#         @return detail pyramid
+#             for example: nLevel = 3,nUp = 2
+#                return shape :
+#                     [b,c,h*4,w*4]
+#                     [b,c,h*2,w*2]
+#                     [b,c,h,w]
+#         """
+
+#         b,n,c,h,w = images.shape
+#         images = images.view(-1,c,h,w)
+
+#         feat = self.conv_0(images)
+#         pyrs = [[] for _ in range(self.nLevel)]
+#         pyrs[0] = feat
+
+#         for level in range(1,self.nLevel):
+#             pyrs[level] = self.downs[level](pyrs[level-1])
+
+
+
+#          # lap unet up
+#         # for up in range(self.nUp):
+#         #     pyrs[- 1] = self.ups[up][-1](pyrs[-1])
+#         #     for level in range(self.nLevel-2,-1,-1):
+#         #         # print(pyrs[level].shape,lap_pyrs[level+1].shape)
+#         #         pyrs[level] = self.ups[up][level](torch.cat([pyrs[level],pyrs[level+1]],1))
+
+
+#         # lap_pyrs = [[] for _ in range(self.nLevel)]
+#         # lap_pyrs[self.nLevel -1 ] = pyrs[-1]
+#         # for level in range(self.nLevel-2,-1,-1):
+#         #     lap_pyrs[level] = pyrs[level] -  F.interpolate(pyrs[level+1],scale_factor = 2.0,align_corners=False,mode='bilinear')
+
+
+#         # ref_pyrs = [lap[:,n//2] for lap in lap_pyrs]
+
+
+
+#         # pcd alignment
+#         lap_pyrs = [lap.clone().reshape(b,n,-1,lap.shape[-2],lap.shape[-1])  for lap in pyrs]
+
+#         for view in range(n):
+#             # if view == n//2:
+#             #     continue
+#             prev_offset =self.offsets[-1](torch.cat([lap_pyrs[-1][:,n//2],lap_pyrs[-1][:,view]],1))
+#             lap_pyrs[-1][:,view] = self.dcns[-1]([lap_pyrs[-1][:,view].contiguous(),prev_offset])
+
+#             for level in range(self.nLevel-2,-1,-1):
+#                 cent_feat = lap_pyrs[level][:,n//2]
+#                 level_feat = lap_pyrs[level][:,view]
+#                 offset = self.offsets[level](torch.cat([cent_feat,level_feat],1))
+#                 prev_offset = F.interpolate(prev_offset,scale_factor = 2.0,align_corners=False,mode='bilinear')
+#                 # prev_offfset = prev_offset*2
+#                 offset = self.offsetmerge[level](torch.cat([offset,prev_offset*2.0],1))
+#                 lap_pyrs[level][:,view] = self.dcns[level]([lap_pyrs[level][:,view].contiguous(),offset])
+#                 prev_offset = offset
+
+#         lap_pyrs = [lap.view(b,n,-1,lap.shape[-2],lap.shape[-1])  for lap in lap_pyrs]
+
+#         return lap_pyrs
+
 class LapPyrNet(nn.Module):
     def __init__(self,nLevel=3,nf=64):
         super(LapPyrNet,self).__init__()
@@ -194,47 +282,26 @@ class LapPyrNet(nn.Module):
         for level in range(1,self.nLevel):
             pyrs[level] = self.downs[level](pyrs[level-1])
 
-
-
-         # lap unet up
-        # for up in range(self.nUp):
-        #     pyrs[- 1] = self.ups[up][-1](pyrs[-1])
-        #     for level in range(self.nLevel-2,-1,-1):
-        #         # print(pyrs[level].shape,lap_pyrs[level+1].shape)
-        #         pyrs[level] = self.ups[up][level](torch.cat([pyrs[level],pyrs[level+1]],1))
-
-
-        # lap_pyrs = [[] for _ in range(self.nLevel)]
-        # lap_pyrs[self.nLevel -1 ] = pyrs[-1]
-        # for level in range(self.nLevel-2,-1,-1):
-        #     lap_pyrs[level] = pyrs[level] -  F.interpolate(pyrs[level+1],scale_factor = 2.0,align_corners=False,mode='bilinear')
-
-
-        # ref_pyrs = [lap[:,n//2] for lap in lap_pyrs]
-
-
-
         # pcd alignment
-        lap_pyrs = [lap.clone().reshape(b,n,-1,lap.shape[-2],lap.shape[-1])  for lap in pyrs]
-
-        for view in range(n):
+        lap_pyrs = pyrs#[lap.clone().reshape(b*n,lap.shape[-3],lap.shape[-2],lap.shape[-1])  for lap in pyrs]
+        cent = [lap[n//2:b*n:n].unsqueeze(1).repeat(1,n,1,1,1).reshape(n*b,lap.shape[-3],lap.shape[-2],lap.shape[-1]) for lap in pyrs]
+        # for view in range(n):
             # if view == n//2:
             #     continue
-            prev_offset =self.offsets[-1](torch.cat([lap_pyrs[-1][:,n//2],lap_pyrs[-1][:,view]],1))
-            lap_pyrs[-1][:,view] = self.dcns[-1]([lap_pyrs[-1][:,view].contiguous(),prev_offset])
+#         print(cent[-1].shape,lap_pyrs[-1].shape)
+        prev_offset =self.offsets[-1](torch.cat([cent[-1],lap_pyrs[-1]],1))
+        lap_pyrs[-1] = self.dcns[-1]([lap_pyrs[-1].contiguous(),prev_offset])
 
-            for level in range(self.nLevel-2,-1,-1):
-                cent_feat = lap_pyrs[level][:,n//2]
-                level_feat = lap_pyrs[level][:,view]
-                offset = self.offsets[level](torch.cat([cent_feat,level_feat],1))
-                prev_offset = F.interpolate(prev_offset,scale_factor = 2.0,align_corners=False,mode='bilinear')
-                # prev_offfset = prev_offset*2
-                offset = self.offsetmerge[level](torch.cat([offset,prev_offset*2.0],1))
-                lap_pyrs[level][:,view] = self.dcns[level]([lap_pyrs[level][:,view].contiguous(),offset])
-                prev_offset = offset
+        for level in range(self.nLevel-2,-1,-1):
+            cent_feat = cent[level]
+            level_feat = lap_pyrs[level]
+            offset = self.offsets[level](torch.cat([cent_feat,level_feat],1))
+            prev_offset = F.interpolate(prev_offset,scale_factor = 2.0,align_corners=False,mode='bilinear')
+            offset = self.offsetmerge[level](torch.cat([offset,prev_offset*2.0],1))
+            lap_pyrs[level] = self.dcns[level]([lap_pyrs[level].contiguous(),offset])
+            prev_offset = offset
 
         lap_pyrs = [lap.view(b,n,-1,lap.shape[-2],lap.shape[-1])  for lap in lap_pyrs]
-
         return lap_pyrs
 
 def CentNet(channel=128,nf=64):
@@ -311,16 +378,19 @@ def GateNet3D(in_channel = 64,nf=64):
         nn.Conv3d(in_channel,nf,3,1,1),
         *([ResidualBlock3D(nf)] * 2),
         nn.LeakyReLU(),
-        nn.Conv3d(nf,nf,3,1,1)
+        nn.Conv3d(nf,nf,3,1,1),
+        nn.LeakyReLU(),
+        CBAM3D(64)
     )
 
 class PyrFusionNet(nn.Module):
-    def __init__(self,nlevel=3):
+    def __init__(self,nlevel=3,nf=64):
         super(PyrFusionNet,self).__init__()
         # self.centNets =nn.ModuleList(([CentNet()]*nlevel))
         # self.merge = nn.ModuleList([last_conv()] +([upSample(128)]*(nlevel-2)) + [upSample(64)])
-        self.gateNets = nn.ModuleList(([GateNet3D()]*nlevel))
-        self.cbam = CBAM3D(64)
+        self.gateNets =  nn.ModuleList(([CCBGRU(input_dim=64, hidden_dim=64, \
+            kernel_size=(3,3), num_layers=1, batch_first=True)]*nlevel))
+        self.merges = nn.ModuleList(([nn.Sequential(nn.Conv2d(nf*3,nf,3,1,1),nn.LeakyReLU())]*nlevel))
     def forward(self,pyrFeat):
         """
         pyrFeat nlevel feat ,each feat view: b,v,-1,h,w
@@ -330,36 +400,18 @@ class PyrFusionNet(nn.Module):
         feats = []
 
         for level in range(len(pyrFeat)):
-            b,v,c,h,w = pyrFeat[level].shape
+            b,n,c,h,w = pyrFeat[level].shape
+            pyrFeat[level]  = pyrFeat[level]
+            front = pyrFeat[level][:,:n//2+1]
+            back = torch.flip(pyrFeat[level][:,n//2:],[1])
+            feat,_ = self.gateNets[level](front)
+            rfeat,_ = self.gateNets[level](back)
+            # print(feat.shape,rfeat.shape,pyrFeat[level][:,n//2].shape)
+            feat = self.merges[level](torch.cat([feat.squeeze(1),rfeat.squeeze(1),pyrFeat[level][:,n//2]],1))
 
-            # weights = torch.zeros(b,c,h,w).to(device)
-            # feat = torch.zeros(b,c,h,w).to(device)
-            # max_weight = torch.zeros(b,1,h,w).to(device)
-            # for v_id in range(v):
-            #     if v_id == v//2:
-            #         continue
-            #     weight =torch.exp(-self.gateNet(torch.cat([pyrFeat[level][:,v_id],pyrFeat[level][:,v//2]],1)))
-            #     feat += weight*pyrFeat[level][:,v_id]
-            #     max_weight = torch.max(max_weight,weight)
-            #     weights =weights + weight
-            # feat += max_weight*pyrFeat[level][:,v//2]
-            # weights += max_weight
-            # feat /=weights
-            # feats.append(feat)
-            pyrFeat[level]  = pyrFeat[level].permute(0,2,1,3,4)
-            feat = self.gateNets[level](pyrFeat[level])
-            # feat  = torch.sum(pyrFeat[level]*weight,2)
-            # cent = pyrFeat[level][:,:,v//2]
-            # cent_weight = self.centNets[level](torch.cat([cent,feat],1))
-            # feat = cent_weight*cent + (1-cent_weight)*feat
-            feat = self.cbam(feat)
-            feat = torch.sum(feat,dim=2)#b,nf,h,w
             feats.append(feat)
         return feats # [b,64,h,w]*level
-        # prev = self.merge[-1](feats[-1])
-        # for level in range(len(pyrFeat)-2,-1,-1):
-        #     prev = self.merge[level](torch.cat([feats[level],prev],1))
-        # return prev
+
 class ReconNet(nn.Module):
     def __init__(self,nlevel=3,nUp=2,nf=64):
         super(ReconNet,self).__init__()
